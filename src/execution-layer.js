@@ -30,7 +30,6 @@ export class ExecutionLayer {
     await this.store.audit(null,'execution_layer.started','system',{workerId:this.workerId,store:this.store.kind});
     if (startWorker) {
       this.startWorker();
-      if (this.selfTestOnBoot) void this.runSelfTest();
     }
     return this;
   }
@@ -143,7 +142,7 @@ export class ExecutionLayer {
   }
 
   async runSelfTest() {
-    this.selfTest = {status:'running',startedAt:new Date().toISOString()};
+    this.selfTest = {status:'running',transport:'internal_contract',startedAt:new Date().toISOString()};
     try {
       const submitted = await this.submit({command:'Phase 1 harmless remote execution verification',provider:'wilkerson',operation:'gateway.verify',requestedBy:'system:self-test'});
       const deadline = Date.now() + 20_000;
@@ -160,6 +159,37 @@ export class ExecutionLayer {
     } catch (error) {
       this.selfTest = {status:'failed',error:safeError(error),completedAt:new Date().toISOString()};
       await this.store.audit(null,'self_test.failed','system',safeError(error)).catch(()=>{});
+    }
+  }
+
+  async runRemoteSelfTest(baseUrl) {
+    if (!this.selfTestOnBoot) return;
+    this.selfTest = {status:'running',transport:'authenticated_http',startedAt:new Date().toISOString()};
+    const headers = {Authorization:`Bearer ${this.authToken}`,'Content-Type':'application/json'};
+    try {
+      const submittedResponse = await fetch(new URL('/api/tasks',baseUrl),{method:'POST',headers,body:JSON.stringify({command:'Phase 1 harmless remote execution verification',provider:'wilkerson',operation:'gateway.verify'})});
+      if (!submittedResponse.ok) throw Object.assign(new Error(`Remote submit returned HTTP ${submittedResponse.status}`),{code:'self_test_submit_failed'});
+      const submitted = await submittedResponse.json();
+      const taskId = submitted.task?.id;
+      if (!taskId) throw Object.assign(new Error('Remote submit did not return a task ID'),{code:'self_test_submit_invalid'});
+      const deadline = Date.now()+20_000;
+      let result;
+      while (Date.now()<deadline) {
+        await wait(150);
+        const response = await fetch(new URL(`/api/tasks/${taskId}/result`,baseUrl),{headers});
+        if (!response.ok) throw Object.assign(new Error(`Remote result returned HTTP ${response.status}`),{code:'self_test_result_failed'});
+        result = await response.json();
+        if (isTerminalStatus(result.status)) break;
+      }
+      if (result?.status!=='succeeded' || result.verification?.verified!==true || !result.artifacts?.length) throw Object.assign(new Error(`Remote self-test ended with status ${result?.status || 'unknown'}`),{code:'self_test_failed'});
+      const auditResponse = await fetch(new URL(`/api/audit?task_id=${encodeURIComponent(taskId)}`,baseUrl),{headers});
+      if (!auditResponse.ok) throw Object.assign(new Error(`Remote audit returned HTTP ${auditResponse.status}`),{code:'self_test_audit_failed'});
+      const audit = await auditResponse.json();
+      this.selfTest = {status:'passed',transport:'authenticated_http',taskId,verification:result.verification,artifactCount:result.artifacts.length,auditEvents:audit.audit.map(item=>item.event),completedAt:new Date().toISOString()};
+      await this.store.audit(taskId,'self_test.remote_passed','system',{transport:'authenticated_http',artifactCount:result.artifacts.length});
+    } catch (error) {
+      this.selfTest = {status:'failed',transport:'authenticated_http',error:safeError(error),completedAt:new Date().toISOString()};
+      await this.store.audit(null,'self_test.remote_failed','system',safeError(error)).catch(()=>{});
     }
   }
 

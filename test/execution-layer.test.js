@@ -57,6 +57,7 @@ test('MCP initializes, lists tools and calls read-only health', async () => {
 test('boot self-test publishes non-secret end-to-end evidence', async () => {
   const env = {...testEnv(),EXECUTION_SELF_TEST_ON_BOOT:'true'};
   const layer = await createExecutionLayer({env,store:new MemoryStore(),startWorker:true});
+  void layer.runSelfTest();
   const deadline = Date.now()+3000;
   let health = await layer.health();
   while (health.selfTest.status==='running' && Date.now()<deadline) {

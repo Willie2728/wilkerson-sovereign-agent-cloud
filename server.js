@@ -607,7 +607,10 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, bindAddress, () => console.log(`Wilkerson Tool Suite: http://${bindAddress}:${port}${accessPin ? ' (PIN protected)' : ''}`));
+server.listen(port, bindAddress, () => {
+  console.log(`Wilkerson Tool Suite: http://${bindAddress}:${port}${accessPin ? ' (PIN protected)' : ''}`);
+  if (executionLayer) void executionLayer.runRemoteSelfTest(`http://127.0.0.1:${port}`);
+});
 
 async function shutdown(signal) {
   console.log(`${signal} received; draining execution layer.`);
