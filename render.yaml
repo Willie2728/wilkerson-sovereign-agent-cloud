@@ -21,6 +21,8 @@ services:
         value: 750
       - key: WORKER_LEASE_SECONDS
         value: 90
+      - key: EXECUTION_SELF_TEST_ON_BOOT
+        value: true
 
 databases:
   - name: wilkerson-sovereign-db

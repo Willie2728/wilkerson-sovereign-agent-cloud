@@ -10,13 +10,15 @@ function safeError(error) {
 }
 
 export class ExecutionLayer {
-  constructor({store, providers, authToken, pollMs = 750, leaseSeconds = 90, workerId = `web-${randomUUID().slice(0,8)}`}) {
+  constructor({store, providers, authToken, pollMs = 750, leaseSeconds = 90, workerId = `web-${randomUUID().slice(0,8)}`, selfTestOnBoot = false}) {
     this.store = store;
     this.providers = providers;
     this.authToken = authToken;
     this.pollMs = Math.max(100, Number(pollMs) || 750);
     this.leaseSeconds = Math.max(15, Number(leaseSeconds) || 90);
     this.workerId = workerId;
+    this.selfTestOnBoot = selfTestOnBoot;
+    this.selfTest = {status:selfTestOnBoot ? 'pending' : 'disabled'};
     this.running = false;
     this.workerPromise = null;
     this.startedAt = new Date().toISOString();
@@ -26,7 +28,10 @@ export class ExecutionLayer {
     await this.store.init();
     for (const adapter of this.providers.values()) await this.store.upsertProvider(adapter.configuration());
     await this.store.audit(null,'execution_layer.started','system',{workerId:this.workerId,store:this.store.kind});
-    if (startWorker) this.startWorker();
+    if (startWorker) {
+      this.startWorker();
+      if (this.selfTestOnBoot) void this.runSelfTest();
+    }
     return this;
   }
 
@@ -38,7 +43,7 @@ export class ExecutionLayer {
   async health() {
     try {
       await this.store.ping();
-      return {ok:true,status:'ready',service:'wilkerson-sovereign-execution-layer',version:'1.0.0',database:this.store.kind,queue:'postgresql-durable-task-queue',worker:{running:this.running,id:this.workerId},startedAt:this.startedAt};
+      return {ok:true,status:'ready',service:'wilkerson-sovereign-execution-layer',version:'1.0.0',database:this.store.kind,queue:'postgresql-durable-task-queue',worker:{running:this.running,id:this.workerId},selfTest:this.selfTest,startedAt:this.startedAt};
     } catch (error) {
       return {ok:false,status:'degraded',service:'wilkerson-sovereign-execution-layer',database:this.store.kind,error:safeError(error)};
     }
@@ -137,6 +142,27 @@ export class ExecutionLayer {
     return this.executeTask(task);
   }
 
+  async runSelfTest() {
+    this.selfTest = {status:'running',startedAt:new Date().toISOString()};
+    try {
+      const submitted = await this.submit({command:'Phase 1 harmless remote execution verification',provider:'wilkerson',operation:'gateway.verify',requestedBy:'system:self-test'});
+      const deadline = Date.now() + 20_000;
+      let task = submitted.task;
+      while (!isTerminalStatus(task.status) && Date.now() < deadline) {
+        await wait(150);
+        task = await this.status(task.id);
+      }
+      const result = await this.result(task.id);
+      if (task.status !== 'succeeded' || task.verification?.verified !== true || !result?.artifacts?.length) throw Object.assign(new Error(`Self-test ended with status ${task.status}`),{code:'self_test_failed'});
+      const audit = await this.audit(task.id);
+      this.selfTest = {status:'passed',taskId:task.id,verification:task.verification,artifactCount:result.artifacts.length,auditEvents:audit.map(item=>item.event),completedAt:new Date().toISOString()};
+      await this.store.audit(task.id,'self_test.passed','system',{artifactCount:result.artifacts.length});
+    } catch (error) {
+      this.selfTest = {status:'failed',error:safeError(error),completedAt:new Date().toISOString()};
+      await this.store.audit(null,'self_test.failed','system',safeError(error)).catch(()=>{});
+    }
+  }
+
   async executeTask(task) {
     const adapter = this.providers.get(task.provider);
     if (!adapter) return this.store.failTask(task.id,Object.assign(new Error('Provider adapter not found'),{code:'provider_missing'}));
@@ -178,6 +204,6 @@ export async function createExecutionLayer({env = process.env, store, startWorke
   if (!store && !databaseUrl) return null;
   const authToken = String(env.GATEWAY_API_TOKEN || '').trim();
   if (!authToken) throw new Error('GATEWAY_API_TOKEN is required when the execution layer is enabled.');
-  const layer = new ExecutionLayer({store:store || new PostgresStore(databaseUrl),providers:createProviderRegistry(env),authToken,pollMs:env.WORKER_POLL_MS,leaseSeconds:env.WORKER_LEASE_SECONDS,workerId:env.WORKER_ID});
+  const layer = new ExecutionLayer({store:store || new PostgresStore(databaseUrl),providers:createProviderRegistry(env),authToken,pollMs:env.WORKER_POLL_MS,leaseSeconds:env.WORKER_LEASE_SECONDS,workerId:env.WORKER_ID,selfTestOnBoot:String(env.EXECUTION_SELF_TEST_ON_BOOT || '').toLowerCase()==='true'});
   return layer.init({startWorker});
 }
