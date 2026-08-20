@@ -53,3 +53,19 @@ test('MCP initializes, lists tools and calls read-only health', async () => {
   assert.equal(called.result.structuredContent.ok,true);
   await layer.close();
 });
+
+test('boot self-test publishes non-secret end-to-end evidence', async () => {
+  const env = {...testEnv(),EXECUTION_SELF_TEST_ON_BOOT:'true'};
+  const layer = await createExecutionLayer({env,store:new MemoryStore(),startWorker:true});
+  const deadline = Date.now()+3000;
+  let health = await layer.health();
+  while (health.selfTest.status==='running' && Date.now()<deadline) {
+    await new Promise(resolve=>setTimeout(resolve,20));
+    health = await layer.health();
+  }
+  assert.equal(health.selfTest.status,'passed');
+  assert.equal(health.selfTest.verification.verified,true);
+  assert.equal(health.selfTest.artifactCount,1);
+  assert.ok(health.selfTest.auditEvents.includes('provider.lease_released'));
+  await layer.close();
+});
