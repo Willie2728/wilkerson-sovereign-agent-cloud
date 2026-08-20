@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: wilkerson-sovereign-agent-cloud
+    name: wilkerson-collective-sovereign-stack
     runtime: node
     plan: free
     buildCommand: npm install
