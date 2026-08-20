@@ -5,9 +5,25 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /
+    healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
         value: 22
       - key: WILKERSON_BIND
         value: 0.0.0.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wilkerson-sovereign-db
+          property: connectionString
+      - key: GATEWAY_API_TOKEN
+        generateValue: true
+      - key: WORKER_POLL_MS
+        value: 750
+      - key: WORKER_LEASE_SECONDS
+        value: 90
+
+databases:
+  - name: wilkerson-sovereign-db
+    databaseName: wilkerson_sovereign
+    user: wilkerson_sovereign
+    plan: free

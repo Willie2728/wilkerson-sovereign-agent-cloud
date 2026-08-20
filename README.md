@@ -41,3 +41,26 @@ This local-first dashboard contains nine original, working Wilkerson product fou
 Double-click `START-WILKERSON-TOOLS.cmd`, then open `http://127.0.0.1:8788/`.
 
 No API key or package installation is required for these foundations. Windows is required for the current speech engine.
+
+## Sovereign execution layer — Phase 1
+
+When `DATABASE_URL` and `GATEWAY_API_TOKEN` are configured, the existing server also exposes an authenticated remote execution gateway. PostgreSQL stores provider records, tasks, approvals, audits, artifacts, leases, results, and the durable queue. The web process claims queued tasks atomically and drains them on shutdown.
+
+Authentication uses `Authorization: Bearer <GATEWAY_API_TOKEN>`. Credentials remain server-side and are never returned by the capability or provider endpoints.
+
+### REST endpoints
+
+- `GET /health` — public liveness and database/worker readiness.
+- `GET /api/capabilities` — execution lifecycle and provider states.
+- `GET /api/providers` and `POST /api/providers/:provider/probe`.
+- `POST /api/tasks`, `GET /api/tasks/:id`, `POST /api/tasks/:id/cancel`, and `GET /api/tasks/:id/result`.
+- `GET /api/approvals` and `POST /api/approvals/:id/decision`.
+- `GET /api/audit`, `GET /api/artifacts`, and `GET /api/artifacts/:id`.
+
+### MCP
+
+`POST /mcp` implements authenticated stateless Streamable HTTP JSON-RPC for `initialize`, `ping`, `tools/list`, and `tools/call`. The published tools are health, capabilities, providers, provider probe, task submit/status/result/cancel, approvals list/decision, audit list, and artifacts list.
+
+Routine reversible operations can enter the queue immediately. Consequential terms and unknown external-provider writes produce a pending approval and remain outside the queue until approved. Adapters without their required credentials and identifiers report `configuration_required`; configured adapters remain `configured_unverified` until a real probe succeeds.
+
+See `.env.example` for environment-variable names. Never commit populated environment files.
