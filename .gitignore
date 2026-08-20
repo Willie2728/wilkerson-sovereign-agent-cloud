@@ -1,0 +1,6 @@
+sovereign-state.json
+public/generated/
+.env
+.env.*
+!.env.example
+npm-debug.log*

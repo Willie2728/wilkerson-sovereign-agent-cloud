@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: wilkerson-sovereign-agent-cloud
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: WILKERSON_BIND
+        value: 0.0.0.0

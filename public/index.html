@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#11184b">
+  <meta name="description" content="Private local-first AI tools for Wilkerson Collective.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Wilkerson AI">
+  <meta name="application-name" content="Wilkerson AI">
+  <meta name="format-detection" content="telephone=no">
+  <title>Wilkerson Sovereign Agent Cloud</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/wilkerson-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/wilkerson-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="polish.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><span>WC</span><div><b>WILKERSON COLLECTIVE</b><small>SOVEREIGN AGENT CLOUD</small></div></div>
+    <div class="header-actions"><button class="header-button" id="installApp" hidden>Install app</button><button class="header-button" id="tvMode">TV mode</button><div class="status" id="localStatus"><i></i><span>Checking local AI…</span></div></div>
+  </header>
+  <main>
+    <section class="intro">
+      <span class="eyebrow">PRIVATE · VOICE OPERATED · PROVIDER READY</span>
+      <h1>Give every agent a governed computer.</h1>
+      <p>Command WISDOM by voice or text, provision isolated workspaces through provider adapters, manage files and sessions, and supervise every consequential action from one founder control plane.</p>
+    </section>
+    <section class="workbench">
+      <nav class="mode-tabs" aria-label="Wilkerson tools">
+        <button class="active" data-mode="sovereign">Sovereign Cloud</button>
+        <button data-mode="forge">Forge AI</button>
+        <button data-mode="persona">Persona Live</button>
+        <button data-mode="crawl">Context Crawler</button>
+        <button data-mode="context">Page Extractor</button>
+        <button data-mode="qa">Browser Pilot</button>
+        <button data-mode="voice">Voice Engine</button>
+        <button data-mode="rooms">Rooms</button>
+        <button data-mode="motion">MotionLab</button>
+        <button data-mode="broadcast">Broadcast</button>
+        <button data-mode="skills">Skills</button>
+        <button data-mode="agent">Agent Core</button>
+      </nav>
+      <div class="panel" id="panel"></div>
+      <div id="result" aria-live="polite"></div>
+    </section>
+    <section class="portfolio">
+      <div class="portfolio-head"><span class="eyebrow">CURRENT CAPABILITY REGISTER</span><h2>Working local vertical slices</h2></div>
+      <div class="rail">
+        <button class="tool-card" data-open="sovereign"><b>Sovereign Cloud</b><p>Voice-operated agent computer control plane</p><span>LOCAL CONTROL PLANE ACTIVE</span></button>
+        <button class="tool-card" data-open="forge"><b>Forge AI</b><p>Local prompt-to-page generation</p><span>QWEN CODER ACTIVE</span></button>
+        <button class="tool-card" data-open="persona"><b>Persona Live</b><p>Conversation, speech, snapshot vision</p><span>LOCAL AI ACTIVE</span></button>
+        <button class="tool-card" data-open="crawl"><b>Context Crawler</b><p>Bounded same-site public crawling</p><span>WORKING NOW</span></button>
+        <button class="tool-card" data-open="rooms"><b>Rooms</b><p>Camera and microphone device studio</p><span>LOCAL DEVICE TEST</span></button>
+        <button class="tool-card" data-open="voice"><b>Voice Engine</b><p>Speech and WAV export</p><span>WINDOWS TTS ACTIVE</span></button>
+        <button class="tool-card" data-open="motion"><b>MotionLab</b><p>Preview and storyboard local media</p><span>PLANNING FOUNDATION</span></button>
+      </div>
+    </section>
+  </main>
+  <dialog class="access-dialog" id="accessDialog">
+    <form method="dialog" id="accessForm">
+      <span class="eyebrow">PRIVATE HOME NETWORK</span>
+      <h2>Enter Wilkerson access PIN</h2>
+      <p>The six-digit PIN is displayed on the computer running the AI Studio.</p>
+      <label for="accessPin">Access PIN</label>
+      <input id="accessPin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+      <small id="accessMessage"></small>
+      <button>Connect securely</button>
+    </form>
+  </dialog>
+  <script src="app.js"></script>
+</body>
+</html>
