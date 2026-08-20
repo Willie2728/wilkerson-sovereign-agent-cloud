@@ -4,3 +4,4 @@ public/generated/
 .env.*
 !.env.example
 npm-debug.log*
+node_modules/

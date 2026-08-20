@@ -6,6 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomUUID} from 'node:crypto';
+import {createExecutionLayer} from './src/execution-layer.js';
+import {handleMcp} from './src/mcp.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(root, 'public');
@@ -27,6 +29,7 @@ const allowedOrigins = new Set([
   'http://127.0.0.1:8788',
   'http://localhost:8788'
 ]);
+const executionLayer = await createExecutionLayer();
 const mime = {
   '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8',
   '.js':'text/javascript; charset=utf-8', '.json':'application/json; charset=utf-8',
@@ -67,6 +70,14 @@ function applyCors(request, response) {
     response.setHeader('Access-Control-Allow-Origin', origin);
     response.setHeader('Vary', 'Origin');
   }
+}
+
+function gatewayAccess(request) {
+  return executionLayer?.authenticate(request.headers.authorization || '');
+}
+
+function gatewayUnavailable(response) {
+  return json(response, 503, {ok:false,error:'Execution layer is not configured. DATABASE_URL and GATEWAY_API_TOKEN are required.'});
 }
 
 function json(response, status, data) {
@@ -440,7 +451,64 @@ async function serveStatic(request, response) {
 const server = http.createServer(async (request, response) => {
   applyCors(request, response);
   try {
-    const requestPath = new URL(request.url, 'http://local').pathname;
+    const requestUrl = new URL(request.url, 'http://local');
+    const requestPath = requestUrl.pathname;
+    if (request.method === 'GET' && requestPath === '/health') {
+      const health = executionLayer ? await executionLayer.health() : {ok:true,status:'website_only',service:'wilkerson-sovereign-stack',executionLayer:'not_configured'};
+      return json(response, health.ok ? 200 : 503, health);
+    }
+    if (requestPath === '/mcp') {
+      if (!executionLayer) return gatewayUnavailable(response);
+      if (!gatewayAccess(request)) return json(response, 401, {ok:false,error:'Bearer authentication required.'});
+      if (request.method !== 'POST') return json(response, 405, {ok:false,error:'Use POST for MCP Streamable HTTP requests.'});
+      const result = await handleMcp(executionLayer, await readBody(request));
+      if (result === null) { response.writeHead(202, {'MCP-Protocol-Version':'2025-06-18'}); return response.end(); }
+      response.writeHead(200, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','MCP-Protocol-Version':'2025-06-18','X-Content-Type-Options':'nosniff'});
+      return response.end(JSON.stringify(result));
+    }
+    const gatewayRoute = requestPath === '/api/capabilities' || requestPath === '/api/providers' || requestPath.startsWith('/api/providers/') || requestPath === '/api/tasks' || requestPath.startsWith('/api/tasks/') || requestPath === '/api/approvals' || requestPath.startsWith('/api/approvals/') || requestPath === '/api/audit' || requestPath === '/api/artifacts' || requestPath.startsWith('/api/artifacts/');
+    if (gatewayRoute) {
+      if (!executionLayer) return gatewayUnavailable(response);
+      if (!gatewayAccess(request)) return json(response, 401, {ok:false,error:'Bearer authentication required.'});
+      if (request.method === 'GET' && requestPath === '/api/capabilities') return json(response,200,{ok:true,...await executionLayer.capabilities()});
+      if (request.method === 'GET' && requestPath === '/api/providers') return json(response,200,{ok:true,providers:await executionLayer.providersList()});
+      const providerProbe = requestPath.match(/^\/api\/providers\/([^/]+)\/probe$/);
+      if (request.method === 'POST' && providerProbe) return json(response,200,{ok:true,provider:await executionLayer.probeProvider(decodeURIComponent(providerProbe[1]),'api')});
+      if (request.method === 'POST' && requestPath === '/api/tasks') {
+        const body = await readBody(request);
+        return json(response,202,{ok:true,...await executionLayer.submit({command:body.command,provider:body.provider,operation:body.operation,input:body.input,requestedBy:'api'})});
+      }
+      const taskMatch = requestPath.match(/^\/api\/tasks\/([0-9a-f-]+)$/i);
+      if (request.method === 'GET' && taskMatch) {
+        const task = await executionLayer.status(taskMatch[1]);
+        return task ? json(response,200,{ok:true,task}) : json(response,404,{ok:false,error:'Task not found.'});
+      }
+      const taskCancel = requestPath.match(/^\/api\/tasks\/([0-9a-f-]+)\/cancel$/i);
+      if (request.method === 'POST' && taskCancel) {
+        const task = await executionLayer.cancel(taskCancel[1],'api');
+        return task ? json(response,200,{ok:true,task}) : json(response,404,{ok:false,error:'Task not found.'});
+      }
+      const taskResult = requestPath.match(/^\/api\/tasks\/([0-9a-f-]+)\/result$/i);
+      if (request.method === 'GET' && taskResult) {
+        const result = await executionLayer.result(taskResult[1]);
+        return result ? json(response,200,{ok:true,...result}) : json(response,404,{ok:false,error:'Task not found.'});
+      }
+      if (request.method === 'GET' && requestPath === '/api/approvals') return json(response,200,{ok:true,approvals:await executionLayer.approvals(requestUrl.searchParams.get('status') || 'pending')});
+      const approvalDecision = requestPath.match(/^\/api\/approvals\/([0-9a-f-]+)\/decision$/i);
+      if (request.method === 'POST' && approvalDecision) {
+        const body = await readBody(request);
+        const result = await executionLayer.decideApproval(approvalDecision[1],body.decision,'api',body.note || '');
+        return result ? json(response,200,{ok:true,...result}) : json(response,404,{ok:false,error:'Pending approval not found.'});
+      }
+      if (request.method === 'GET' && requestPath === '/api/audit') return json(response,200,{ok:true,audit:await executionLayer.audit(requestUrl.searchParams.get('task_id'))});
+      if (request.method === 'GET' && requestPath === '/api/artifacts') return json(response,200,{ok:true,artifacts:await executionLayer.artifacts(requestUrl.searchParams.get('task_id'))});
+      const artifactMatch = requestPath.match(/^\/api\/artifacts\/([0-9a-f-]+)$/i);
+      if (request.method === 'GET' && artifactMatch) {
+        const artifact = await executionLayer.artifact(artifactMatch[1]);
+        return artifact ? json(response,200,{ok:true,artifact}) : json(response,404,{ok:false,error:'Artifact not found.'});
+      }
+      return json(response,405,{ok:false,error:'Method not allowed.'});
+    }
     if (request.method === 'GET' && requestPath === '/api/access') {
       return json(response, 200, {required:Boolean(accessPin), mode:accessPin ? 'private-lan' : 'local-computer'});
     }
@@ -450,7 +518,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'OPTIONS') {
       const origin = request.headers.origin;
       if (origin && !allowedOrigins.has(origin)) return json(response, 403, {error:'Origin not allowed.'});
-      response.writeHead(204, {'Access-Control-Allow-Methods':'GET, POST, OPTIONS', 'Access-Control-Allow-Headers':'Content-Type', 'Access-Control-Max-Age':'600'});
+      response.writeHead(204, {'Access-Control-Allow-Methods':'GET, POST, OPTIONS', 'Access-Control-Allow-Headers':'Content-Type, Authorization, MCP-Protocol-Version', 'Access-Control-Max-Age':'600'});
       return response.end();
     }
     if (request.method === 'GET' && request.url === '/api/llm/status') return json(response, 200, await ollamaTags());
@@ -540,3 +608,15 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, bindAddress, () => console.log(`Wilkerson Tool Suite: http://${bindAddress}:${port}${accessPin ? ' (PIN protected)' : ''}`));
+
+async function shutdown(signal) {
+  console.log(`${signal} received; draining execution layer.`);
+  server.close(async () => {
+    if (executionLayer) await executionLayer.close();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
