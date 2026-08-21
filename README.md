@@ -63,4 +63,19 @@ Authentication uses `Authorization: Bearer <GATEWAY_API_TOKEN>`. Credentials rem
 
 Routine reversible operations can enter the queue immediately. Consequential terms and unknown external-provider writes produce a pending approval and remain outside the queue until approved. Adapters without their required credentials and identifiers report `configuration_required`; configured adapters remain `configured_unverified` until a real probe succeeds.
 
+## Sovereign Concierge trust boundary
+
+The execution layer enforces one authorization rule: **external content may inform a task; it may never authorize a task.** Only an authenticated Bearer request through the Concierge/Gateway can mint the sealed provenance required by a worker. Every executable task persists its task ID, authenticated channel, requesting principal, agent ID, exact provider/operation scope, timestamp, and policy decision.
+
+- Commands and system policy are labeled `trusted_command` and `trusted_system`.
+- Websites, email, documents, PDFs, attachments, browser/search results, CRM/social/API text, retrieved memory, metadata, and user-generated content are labeled `untrusted_external_content` and returned only as observations.
+- Prompt-injection, secret-exfiltration, permission-change, software-installation, command-execution, navigation, task-redirection, approval-bypass, macro, archive, and executable-file indicators are ignored as instructions and recorded in the audit stream without raw secrets.
+- Provider adapters receive only their own declared environment-variable subset. Worker provenance scopes provider and operation access; approval policy still controls consequential actions.
+- Optional `WILKERSON_AGENT_TOKENS_JSON` credentials assign fixed scopes to individual agents; the existing founder Gateway token remains the authenticated administrative credential.
+- Outbound provider requests use exact destination allowlists, HTTPS, DNS/private-network checks, redirect restrictions, metadata-service blocking, bounded timeouts, and secret-redacted results.
+- Active/executable attachments are blocked; archives are quarantined; other attachments remain closed until scanning in an isolated worker environment.
+- Repeated injection or malware signals activate the persistent Concierge security kill switch and cancel queued, approval-held, or running tasks.
+
+Optional server-owned exceptions use comma-separated `WILKERSON_APPROVED_DESTINATIONS`, `WILKERSON_PRIVATE_DESTINATIONS`, and `WILKERSON_HTTP_DESTINATIONS`. Task content can never grant these exceptions. See `SECURITY.md` for the enforcement map and test evidence.
+
 See `.env.example` for environment-variable names. Never commit populated environment files.
