@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {assertSafeOutboundUrl, deepRedact, PROVENANCE, TRUST_BOUNDARY} from './security.js';
 
 function envValue(env, key) {
   return String(env[key] || '').trim();
@@ -8,25 +9,31 @@ function missing(env, keys) {
   return keys.filter(key => !envValue(env, key));
 }
 
-async function fetchJson(url, options = {}, timeoutMs = 10_000) {
+async function fetchJson(url, options = {}, timeoutMs = 10_000, networkPolicy = {}) {
+  const safeUrl = await assertSafeOutboundUrl(url,networkPolicy);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, {...options, signal:controller.signal});
+    const response = await fetch(safeUrl, {...options, redirect:'error', signal:controller.signal});
     const text = await response.text();
     let body;
-    try { body = text ? JSON.parse(text) : null; } catch { body = {text:text.slice(0, 500)}; }
+    try { body = text ? JSON.parse(text) : null; } catch { body = {text:deepRedact(text.slice(0, 500))}; }
     if (!response.ok) {
       const error = new Error(`Provider returned HTTP ${response.status}`);
       error.code = 'provider_http_error';
       error.status = response.status;
-      error.details = body;
+      error.details = deepRedact(body);
       throw error;
     }
-    return body;
+    return deepRedact(body);
   } finally {
     clearTimeout(timer);
   }
+}
+
+function scopedEnvironment(env, requiredEnv) {
+  const keys = [...requiredEnv,'WILKERSON_APPROVED_DESTINATIONS','WILKERSON_PRIVATE_DESTINATIONS','WILKERSON_HTTP_DESTINATIONS'];
+  return Object.freeze(Object.fromEntries(keys.map(key => [key,envValue(env,key)])));
 }
 
 class ProviderAdapter {
@@ -35,18 +42,20 @@ class ProviderAdapter {
     this.label = label;
     this.requiredEnv = requiredEnv;
     this.capabilities = capabilities;
-    this.env = env;
+    this.scopedEnv = scopedEnvironment(env,requiredEnv);
     this.probeHandler = probe;
   }
 
   configuration() {
-    const missingConfig = missing(this.env, this.requiredEnv);
+    const missingConfig = missing(this.scopedEnv, this.requiredEnv);
     return {
       id:this.id,
       label:this.label,
       status:missingConfig.length ? 'configuration_required' : 'configured_unverified',
       missingConfig,
-      capabilities:this.capabilities
+      capabilities:this.capabilities,
+      credentialScope:this.requiredEnv,
+      isolation:TRUST_BOUNDARY.isolation
     };
   }
 
@@ -54,11 +63,17 @@ class ProviderAdapter {
     const config = this.configuration();
     if (config.missingConfig.length) return config;
     if (!this.probeHandler) return {...config, status:'configured_unverified', detail:'No safe probe is enabled for this adapter.'};
-    const detail = await this.probeHandler(this.env);
+    const detail = await this.probeHandler(this.scopedEnv);
     return {...config, status:'connected', missingConfig:[], detail};
   }
 
   async execute(task) {
+    if (task.provenance?.classification !== PROVENANCE.TRUSTED_COMMAND && task.provenance?.classification !== PROVENANCE.TRUSTED_SYSTEM) {
+      throw Object.assign(new Error('Provider execution requires trusted gateway provenance.'),{code:'trusted_provenance_required'});
+    }
+    if (task.provenance?.authenticated !== true || !task.provenance?.scope?.includes(`operation:${task.operation}`)) {
+      throw Object.assign(new Error('Provider execution is outside the authenticated task scope.'),{code:'task_scope_violation'});
+    }
     if (task.operation === 'provider.probe') return this.probe();
     const error = new Error(`Operation ${task.operation} is not enabled for provider ${this.id}.`);
     error.code = 'provider_operation_not_enabled';
@@ -80,7 +95,7 @@ class WilkersonAdapter extends ProviderAdapter {
   }
 
   configuration() {
-    return {id:this.id, label:this.label, status:'connected', missingConfig:[], capabilities:this.capabilities};
+    return {id:this.id, label:this.label, status:'connected', missingConfig:[], capabilities:this.capabilities,credentialScope:[],isolation:TRUST_BOUNDARY.isolation};
   }
 
   async probe() {
@@ -119,7 +134,7 @@ export function createProviderRegistry(env = process.env) {
       id:'orgo', label:'Orgo Computers', env,
       requiredEnv:['ORGO_API_KEY','ORGO_WORKSPACE_ID'],
       capabilities:['provider.probe','computers.list','computer.lease','computer.release','computer.action'],
-      probe:async currentEnv => fetchJson(`https://www.orgo.ai/api/computers?workspace_id=${encodeURIComponent(currentEnv.ORGO_WORKSPACE_ID)}`, {headers:bearer(currentEnv.ORGO_API_KEY)})
+      probe:async currentEnv => fetchJson(`https://www.orgo.ai/api/computers?workspace_id=${encodeURIComponent(currentEnv.ORGO_WORKSPACE_ID)}`, {headers:bearer(currentEnv.ORGO_API_KEY)},10_000,{approvedHosts:['www.orgo.ai'],env:currentEnv})
     }),
     new ProviderAdapter({
       id:'openclaw', label:'OpenClaw Gateway', env,
@@ -131,7 +146,10 @@ export function createProviderRegistry(env = process.env) {
       id:'hermes', label:'Hermes Runtime', env,
       requiredEnv:['HERMES_BASE_URL','HERMES_API_KEY'],
       capabilities:['provider.probe','job.submit','job.status','job.cancel','job.result'],
-      probe:async currentEnv => fetchJson(new URL('/health', currentEnv.HERMES_BASE_URL), {headers:bearer(currentEnv.HERMES_API_KEY)})
+      probe:async currentEnv => {
+        const target = new URL('/health',currentEnv.HERMES_BASE_URL);
+        return fetchJson(target,{headers:bearer(currentEnv.HERMES_API_KEY)},10_000,{approvedHosts:[target.hostname],env:currentEnv});
+      }
     }),
     new ProviderAdapter({
       id:'vagon', label:'Vagon Streams', env,
@@ -143,19 +161,23 @@ export function createProviderRegistry(env = process.env) {
       id:'highlevel', label:'HighLevel', env,
       requiredEnv:['HIGHLEVEL_TOKEN','HIGHLEVEL_LOCATION_ID'],
       capabilities:['provider.probe','contacts.read','opportunities.read','message.draft','workflow.trigger'],
-      probe:async currentEnv => fetchJson(`https://services.leadconnectorhq.com/locations/${encodeURIComponent(currentEnv.HIGHLEVEL_LOCATION_ID)}`, {headers:{...bearer(currentEnv.HIGHLEVEL_TOKEN), Version:'2021-07-28'}})
+      probe:async currentEnv => fetchJson(`https://services.leadconnectorhq.com/locations/${encodeURIComponent(currentEnv.HIGHLEVEL_LOCATION_ID)}`, {headers:{...bearer(currentEnv.HIGHLEVEL_TOKEN), Version:'2021-07-28'}},10_000,{approvedHosts:['services.leadconnectorhq.com'],env:currentEnv})
     }),
     new ProviderAdapter({
       id:'github', label:'GitHub', env,
       requiredEnv:['GITHUB_TOKEN','GITHUB_OWNER'],
       capabilities:['provider.probe','repository.read','issue.create','workflow.dispatch'],
-      probe:async currentEnv => fetchJson('https://api.github.com/user', {headers:{...bearer(currentEnv.GITHUB_TOKEN), 'User-Agent':'wilkerson-sovereign-stack', 'X-GitHub-Api-Version':'2022-11-28'}})
+      probe:async currentEnv => fetchJson('https://api.github.com/user', {headers:{...bearer(currentEnv.GITHUB_TOKEN), 'User-Agent':'wilkerson-sovereign-stack', 'X-GitHub-Api-Version':'2022-11-28'}},10_000,{approvedHosts:['api.github.com'],env:currentEnv})
     }),
     new ProviderAdapter({
       id:'render', label:'Render', env,
       requiredEnv:['RENDER_API_KEY','RENDER_WORKSPACE_ID'],
       capabilities:['provider.probe','services.read','deploy.trigger','deploy.status','logs.read'],
-      probe:async currentEnv => fetchJson('https://api.render.com/v1/services?limit=1', {headers:bearer(currentEnv.RENDER_API_KEY)})
+      probe:async currentEnv => {
+        const workspace = await fetchJson(`https://api.render.com/v1/owners/${encodeURIComponent(currentEnv.RENDER_WORKSPACE_ID)}`,{headers:bearer(currentEnv.RENDER_API_KEY)},10_000,{approvedHosts:['api.render.com'],env:currentEnv});
+        const services = await fetchJson(`https://api.render.com/v1/services?limit=1&ownerId=${encodeURIComponent(currentEnv.RENDER_WORKSPACE_ID)}`,{headers:bearer(currentEnv.RENDER_API_KEY)},10_000,{approvedHosts:['api.render.com'],env:currentEnv});
+        return {workspaceVerified:true,workspaceName:workspace?.name || workspace?.owner?.name || null,serviceReadVerified:Array.isArray(services)};
+      }
     })
   ];
 
@@ -163,13 +185,7 @@ export function createProviderRegistry(env = process.env) {
 }
 
 export function safeProviderRecord(record) {
-  const clone = structuredClone(record);
-  if (clone.detail && typeof clone.detail === 'object') {
-    for (const key of Object.keys(clone.detail)) {
-      if (/token|secret|password|key/i.test(key)) clone.detail[key] = '[redacted]';
-    }
-  }
-  return clone;
+  return deepRedact(structuredClone(record));
 }
 
 export function constantTimeTokenMatch(expected, provided) {

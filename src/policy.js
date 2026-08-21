@@ -1,4 +1,6 @@
-const consequentialPattern = /\b(send|publish|post|message|email|buy|purchase|pay|charge|refund|transfer|delete|remove|destroy|deploy|release|credential|password|secret|account|permission|invite|contract|sign|submit|book|schedule|cancel appointment)\b/i;
+import {PROVENANCE, SECURITY_POLICY_VERSION} from './security.js';
+
+const consequentialPattern = /\b(send|publish|post|message|email|buy|purchase|pay|charge|refund|transfer|delete|remove|destroy|deploy|release|credential|password|secret|account|permission|invite|contract|sign|submit|book|schedule|cancel appointment|install|execute|run command|change policy|disable security)\b/i;
 
 const routineOperations = new Set([
   'gateway.verify',
@@ -26,10 +28,13 @@ export function evaluatePolicy({command = '', operation = '', provider = 'wilker
     decision: requiresApproval ? 'approval_required' : 'allow',
     requiresApproval,
     reasons,
-    policyVersion: 'phase1-2026-08-20'
+    commandClassification:PROVENANCE.TRUSTED_COMMAND,
+    externalContentClassification:PROVENANCE.UNTRUSTED_EXTERNAL_CONTENT,
+    externalContentMayAuthorize:false,
+    policyVersion:SECURITY_POLICY_VERSION
   };
 }
 
 export function isTerminalStatus(status) {
-  return ['succeeded', 'failed', 'cancelled', 'denied'].includes(status);
+  return ['succeeded', 'failed', 'cancelled', 'denied', 'security_blocked'].includes(status);
 }

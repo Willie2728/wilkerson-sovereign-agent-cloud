@@ -8,9 +8,13 @@ function testEnv() {
   return {GATEWAY_API_TOKEN:'test-token',WORKER_POLL_MS:'10',WORKER_LEASE_SECONDS:'30'};
 }
 
+function commandContext(layer, principal = 'test-principal') {
+  return layer.createAuthenticatedContext({principal,agentId:'test-agent',transport:'test'});
+}
+
 test('harmless task completes through queue, lease, verification, artifact and audit', async () => {
   const layer = await createExecutionLayer({env:testEnv(),store:new MemoryStore(),startWorker:false});
-  const submitted = await layer.submit({command:'Verify Phase 1 execution path',provider:'wilkerson',operation:'gateway.verify',requestedBy:'test'});
+  const submitted = await layer.submit({command:'Verify Phase 1 execution path',provider:'wilkerson',operation:'gateway.verify'},commandContext(layer));
   assert.equal(submitted.task.status,'queued');
   const completed = await layer.processOne();
   assert.equal(completed.status,'succeeded');
@@ -24,10 +28,11 @@ test('harmless task completes through queue, lease, verification, artifact and a
 
 test('consequential task pauses until explicit approval', async () => {
   const layer = await createExecutionLayer({env:testEnv(),store:new MemoryStore(),startWorker:false});
-  const submitted = await layer.submit({command:'Publish this message',provider:'wilkerson',operation:'system.echo',requestedBy:'test'});
+  const context = commandContext(layer);
+  const submitted = await layer.submit({command:'Publish this message',provider:'wilkerson',operation:'system.echo'},context);
   assert.equal(submitted.task.status,'awaiting_approval');
   assert.equal((await layer.processOne()),null);
-  const decision = await layer.decideApproval(submitted.approval.id,'approved','test','approved for test');
+  const decision = await layer.decideApproval(submitted.approval.id,'approved',context,'approved for test');
   assert.equal(decision.task.status,'queued');
   const completed = await layer.processOne();
   assert.equal(completed.status,'succeeded');
@@ -45,11 +50,12 @@ test('unconfigured providers report configuration_required and are not connected
 
 test('MCP initializes, lists tools and calls read-only health', async () => {
   const layer = await createExecutionLayer({env:testEnv(),store:new MemoryStore(),startWorker:false});
+  const context = commandContext(layer);
   const initialized = await handleMcp(layer,{jsonrpc:'2.0',id:1,method:'initialize',params:{}});
   assert.equal(initialized.result.serverInfo.name,'wilkerson-sovereign-stack');
   const listed = await handleMcp(layer,{jsonrpc:'2.0',id:2,method:'tools/list',params:{}});
   assert.ok(listed.result.tools.some(tool=>tool.name==='task_submit'));
-  const called = await handleMcp(layer,{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'health_get',arguments:{}}});
+  const called = await handleMcp(layer,{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'health_get',arguments:{}}},context);
   assert.equal(called.result.structuredContent.ok,true);
   await layer.close();
 });

@@ -23,6 +23,10 @@ services:
         value: 90
       - key: EXECUTION_SELF_TEST_ON_BOOT
         value: true
+      - key: INJECTION_KILL_THRESHOLD
+        value: 6
+      - key: INJECTION_WINDOW_SECONDS
+        value: 600
 
 databases:
   - name: wilkerson-sovereign-db
