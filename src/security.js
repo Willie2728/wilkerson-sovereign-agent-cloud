@@ -74,6 +74,7 @@ function redactString(value) {
 export function deepRedact(value, keyHint = '') {
   if (secretKeyPattern.test(String(keyHint))) return '[REDACTED_SECRET]';
   if (typeof value === 'string') return redactString(value);
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(item => deepRedact(item));
   if (value && typeof value === 'object') {
     const output = {};
