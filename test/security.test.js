@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createExecutionLayer} from '../src/execution-layer.js';
 import {MemoryStore} from '../src/store.js';
 import {createProviderRegistry} from '../src/providers.js';
-import {assertSafeOutboundUrl, formatUntrustedForModel, prepareTaskInput, PROVENANCE, sanitizeAttachmentMetadata} from '../src/security.js';
+import {assertSafeOutboundUrl, deepRedact, formatUntrustedForModel, prepareTaskInput, PROVENANCE, sanitizeAttachmentMetadata} from '../src/security.js';
 
 function env(overrides = {}) {
   return {GATEWAY_API_TOKEN:'test-gateway-token',WORKER_POLL_MS:'10',WORKER_LEASE_SECONDS:'30',INJECTION_KILL_THRESHOLD:'100',...overrides};
@@ -181,4 +181,11 @@ test('download sanitizer and model boundary explicitly forbid external authoriza
   const prepared = prepareTaskInput({searchResults:[hostileWebsite]});
   assert.equal(prepared.input.searchResults,undefined);
   assert.equal(prepared.input.untrustedObservations[0].mayAuthorizeActions,false);
+});
+
+test('redaction preserves audit timestamps while removing secrets', () => {
+  const timestamp = new Date('2026-08-21T05:04:08.269Z');
+  const redacted = deepRedact({timestamp,authorization:'Bearer example-secret'});
+  assert.equal(redacted.timestamp,'2026-08-21T05:04:08.269Z');
+  assert.equal(redacted.authorization,'[REDACTED_SECRET]');
 });
