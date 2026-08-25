@@ -6,6 +6,7 @@ let cameraStream = null;
 let visualContext = '';
 let dictationState = null;
 let deferredInstallPrompt = null;
+let accessPinRequired = false;
 
 const modes = {
   sovereign: ['AGENT COMPUTER CONTROL PLANE', 'Wilkerson Sovereign Agent Cloud', 'Operate governed agent workspaces through WISDOM. Planning, approvals, audit, and the kill switch work now; actual cloud computers require the Orgo adapter and credentials.', 'PATTERNED AFTER: ORGO · PARTIAL'],
@@ -91,7 +92,11 @@ function setMode(mode) {
 async function api(path, body) {
   const response = await fetch(path, {method:'POST', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(body)});
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'The local service could not complete the request.');
+  if (!response.ok) {
+    const error = new Error(data.error || 'The local service could not complete the request.');
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -160,7 +165,12 @@ async function refreshLocalStatus() {
   const node = $('#localStatus');
   try {
     const response = await fetch('/api/llm/status', {headers:authHeaders()});
-    if (response.status === 401) { $('#accessDialog')?.showModal(); throw new Error('PIN required'); }
+    if (response.status === 401) {
+      if (accessPinRequired) $('#accessDialog')?.showModal();
+      node.classList.add('offline');
+      node.querySelector('span').textContent = accessPinRequired ? 'PIN required' : 'Hosted core ready · local AI off';
+      return;
+    }
     const data = await response.json();
     const ready = data.online && data.codingReady && data.visionReady;
     node.classList.toggle('offline', !ready);
@@ -180,7 +190,8 @@ async function setupAccess() {
   try {
     const response = await fetch('/api/access');
     const access = await response.json();
-    if (!access.required) return true;
+    accessPinRequired = Boolean(access.required);
+    if (!accessPinRequired) return true;
     const check = await fetch('/api/llm/status', {headers:authHeaders()});
     if (check.ok) return true;
     $('#accessDialog').showModal();
@@ -264,11 +275,26 @@ async function buildPage(event) {
   try {
     const data = await api('/api/forge', {prompt:$('#forgePrompt').value, name:$('#forgeName').value});
     lastResult = data.result;
-    const src = URL.createObjectURL(new Blob([lastResult.html], {type:'text/html'}));
-    $('#result').innerHTML = `<article class="result-card"><span class="eyebrow">LOCAL BUILD COMPLETE</span><h2>${escapeHtml($('#forgeName').value)}</h2><div class="model-status">${escapeHtml(lastResult.model)} · ${(lastResult.elapsedMs / 1000).toFixed(1)} seconds</div><iframe class="forge-preview" sandbox="allow-scripts" src="${src}" title="Generated page preview"></iframe><p class="boundary">${escapeHtml(lastResult.boundary)}</p><button class="download" id="downloadPage">Download standalone HTML</button></article>`;
-    $('#downloadPage').onclick = () => downloadFile(`${slug($('#forgeName').value)}.html`, lastResult.html, 'text/html');
-  } catch (error) { showError(error); }
+    showForgeResult();
+  } catch (error) {
+    if (error.status === 401 || /authenticated/i.test(error.message)) {
+      lastResult = {html:buildClientForgePage($('#forgeName').value,$('#forgePrompt').value),model:'Wilkerson Forge browser continuity',elapsedMs:0,boundary:'Generated entirely in this browser. Working standalone front end only; no Base44 databases, accounts, integrations, or hosting.'};
+      showForgeResult();
+    } else showError(error);
+  }
   finally { busy(button, false, 'Generate locally'); }
+}
+
+function showForgeResult() {
+  const src = URL.createObjectURL(new Blob([lastResult.html], {type:'text/html'}));
+  $('#result').innerHTML = `<article class="result-card"><span class="eyebrow">LOCAL BUILD COMPLETE</span><h2>${escapeHtml($('#forgeName').value)}</h2><div class="model-status">${escapeHtml(lastResult.model)} · ${(lastResult.elapsedMs / 1000).toFixed(1)} seconds</div><iframe class="forge-preview" sandbox="allow-scripts" src="${src}" title="Generated page preview"></iframe><p class="boundary">${escapeHtml(lastResult.boundary)}</p><button class="download" id="downloadPage">Download standalone HTML</button></article>`;
+  $('#downloadPage').onclick = () => downloadFile(`${slug($('#forgeName').value)}.html`, lastResult.html, 'text/html');
+}
+
+function buildClientForgePage(name, request) {
+  const safeName = escapeHtml(name || 'Wilkerson Experience');
+  const safeRequest = escapeHtml(request || 'A focused standalone experience.');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeName}</title><style>:root{--navy:#0b123c;--gold:#d7b75f;--paper:#f5f6fa}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui;background:var(--paper);color:#18203d}header{min-height:62vh;display:grid;place-items:center;padding:8vw;background:radial-gradient(circle at 78% 18%,#6859a866,transparent 30%),linear-gradient(135deg,#090f35,#251950);color:#fff;text-align:center}main{max-width:1000px;margin:-55px auto 60px;padding:20px}.eyebrow{color:var(--gold);font-size:11px;letter-spacing:3px;font-weight:800}h1{font:clamp(48px,8vw,88px)/1 Georgia;margin:18px 0}p{line-height:1.7}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:#fff;border-radius:18px;padding:24px;box-shadow:0 18px 45px #11184b17}.card button{border:0;border-radius:9px;padding:11px 14px;background:var(--navy);color:#fff;font-weight:800;cursor:pointer}.notice{margin-top:18px;padding:16px;border-left:4px solid var(--gold);background:#fff}@media(max-width:700px){.cards{grid-template-columns:1fr}header{min-height:52vh}}@media(prefers-reduced-motion:no-preference){.card{transition:.25s}.card:hover{transform:translateY(-6px)}}</style></head><body><header><div><span class="eyebrow">WILKERSON FORGE</span><h1>${safeName}</h1><p>${safeRequest}</p></div></header><main><section class="cards"><article class="card"><h2>Discover</h2><p>Explore the core idea through a clear experience.</p><button data-message="Discovery opened">Explore</button></article><article class="card"><h2>Connect</h2><p>Turn the concept into an actionable next step.</p><button data-message="Connection pathway opened">Connect</button></article><article class="card"><h2>Build</h2><p>Continue refining this standalone foundation.</p><button data-message="Build pathway opened">Continue</button></article></section><p class="notice" id="notice" aria-live="polite">Every control works locally. No data leaves this page.</p></main><script>document.querySelectorAll('button').forEach(button=>button.addEventListener('click',()=>document.querySelector('#notice').textContent=button.dataset.message));</script></body></html>`;
 }
 
 async function chatWithPersona(event) {
