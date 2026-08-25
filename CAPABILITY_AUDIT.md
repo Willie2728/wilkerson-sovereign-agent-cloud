@@ -4,6 +4,8 @@ Audited: 2026-08-25
 
 This project contains original Wilkerson Collective implementations patterned after public product categories. It is not affiliated with, endorsed by, or a source-code copy of the named products.
 
+Full feature-parity requirements and certification gates are maintained in [PARITY_ROADMAP.md](PARITY_ROADMAP.md). No module in the table below is currently certified as full parity with its benchmark.
+
 | Wilkerson module | Public benchmark | What the benchmark does | What works here now | Parity judgment |
 |---|---|---|---|---|
 | Sovereign Agent Cloud | Orgo | Provisions persistent agent desktops and exposes screenshot, mouse, keyboard, shell, file, template, and lifecycle APIs | Authenticated task gateway, scoped authority, approvals, durable queue, audit, provider registry, workspace planning, and kill switch | Partial. Real computer provisioning and computer actions require configured provider credentials and enabled operations. |

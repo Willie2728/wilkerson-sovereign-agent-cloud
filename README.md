@@ -31,6 +31,8 @@ This local-first dashboard contains nine original, working Wilkerson product fou
 
 ## Honest boundaries
 
+See [PARITY_ROADMAP.md](PARITY_ROADMAP.md) for the benchmark-by-benchmark gap analysis, required infrastructure, and acceptance gates that must pass before any module can be called feature-parity.
+
 - Persona Live does not yet perform phoneme-level lip sync or real-time video conversation.
 - MotionLab is a media previsualization and storyboard foundation, not a generative video model.
 - Forge currently builds standalone pages, not databases, authentication, or deployed full-stack applications.
