@@ -45,6 +45,18 @@ test('unconfigured providers report configuration_required and are not connected
   assert.equal(providers.find(item=>item.id==='wilkerson').status,'connected');
   assert.equal(providers.find(item=>item.id==='orgo').status,'configuration_required');
   assert.ok(providers.find(item=>item.id==='orgo').missingConfig.includes('ORGO_API_KEY'));
+  assert.equal(providers.find(item=>item.id==='tavus').status,'configuration_required');
+  assert.ok(providers.find(item=>item.id==='tavus').capabilities.includes('conversation.create'));
+  assert.ok(providers.find(item=>item.id==='tavus').missingConfig.includes('TAVUS_API_KEY'));
+  await layer.close();
+});
+
+test('Tavus conversation creation is agent-callable but pauses for approval', async () => {
+  const env = {...testEnv(),TAVUS_API_KEY:'test-tavus-key',TAVUS_PERSONA_ID:'persona_test',TAVUS_REPLICA_ID:'replica_test'};
+  const layer = await createExecutionLayer({env,store:new MemoryStore(),startWorker:false});
+  const submitted = await layer.submit({command:'Create a real-time avatar conversation',provider:'tavus',operation:'conversation.create',input:{name:'Acceptance session',testMode:true}},commandContext(layer));
+  assert.equal(submitted.task.status,'awaiting_approval');
+  assert.ok(submitted.approval);
   await layer.close();
 });
 

@@ -23,6 +23,7 @@ Persona Live, Browser Pilot, Voice Engine, Broadcast Studio, Skill Exchange, and
 ## What can be completed inside this repository
 
 - Keep the governed gateway, provenance, approvals, audit trail, provider leases and kill switch.
+- The first real avatar-provider slice is implemented: authenticated agents can list, inspect, create, and end Tavus conversations through the governed task API once server-side Tavus credentials are configured. Live creation and termination remain approval-gated.
 - Implement and test provider adapters after API credentials and exact allowed operations are supplied.
 - Expand Forge incrementally with project persistence, versioning, a database/auth service, build workers and deployment targets.
 - Expand crawler formats and job persistence, while retaining SSRF, private-network and robots controls.
@@ -49,4 +50,3 @@ A module may be labeled “parity” only after all of the following pass:
 6. Provider-backed operations are verified against real configured accounts, not mocks.
 7. Security review covers secrets, SSRF, injection, uploads, webhooks, data export/deletion and auditability.
 8. The deployed production URL passes the same acceptance suite.
-
