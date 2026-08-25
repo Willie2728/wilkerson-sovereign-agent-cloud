@@ -304,7 +304,7 @@ function buildClientForgePage(name, request) {
 
 async function chatWithPersona(event) {
   event.preventDefault();
-  const button = event.currentTarget.querySelector('button');
+  const button = event.currentTarget.querySelector('button[type="submit"], button:not([type])');
   const message = $('#personaText').value;
   busy(button, true, 'Thinking locally…');
   $('#result').innerHTML = `<article class="result-card"><div class="chat-bubble user">${escapeHtml(message)}</div><div class="chat-bubble assistant">WISDOM is thinking…</div></article>`;
@@ -315,8 +315,25 @@ async function chatWithPersona(event) {
     const emotion = $('#avatarEmotion')?.value || 'calm';
     $('#hearAnswer').onclick = () => speakAnswer(answer,emotion);
     if ($('#autoSpeak')?.checked !== false) speakAnswer(answer,emotion);
-  } catch (error) { showError(error); }
-  finally { busy(button, false, 'Ask and hear answer'); }
+  } catch (error) {
+    if (error.status === 401) {
+      const answer = personaContinuityAnswer(message,visualContext);
+      const emotion = $('#avatarEmotion')?.value || 'calm';
+      $('#result').innerHTML = `<article class="result-card voice-result"><div class="speaking-portrait avatar-performance emotion-${emotion}" id="speakingPortrait"><img src="willie-approved-headshot.png" alt="Approved Willie portrait"><span class="avatar-mouth" aria-hidden="true"></span><div class="voice-rings"></div></div><div><span class="eyebrow">WISDOM · BROWSER CONTINUITY</span><div class="chat-bubble user">${escapeHtml(message)}</div><div class="chat-bubble assistant">${escapeHtml(answer)}</div><div id="audioSlot"><button class="secondary-action" id="hearAnswer">Hear answer</button></div><small>Local browser response · authenticated agent tools remain protected</small></div></article>`;
+      $('#hearAnswer').onclick = () => speakBrowserAvatar(answer,emotion);
+      if ($('#autoSpeak')?.checked !== false) speakBrowserAvatar(answer,emotion);
+    } else showError(error);
+  }
+  finally { busy(button, false, 'Ask WISDOM'); }
+}
+
+function personaContinuityAnswer(message, context = '') {
+  const request = String(message || '').trim();
+  const visible = context ? ' I will also retain the user-approved visual context for this browser session.' : '';
+  if (/welcome|hello|introduce/i.test(request)) return `Welcome to the Wilkerson Sovereign Studio. I am WISDOM, your conversational guide for governed research, creative production, avatar work, and agent-supervised execution.${visible}`;
+  if (/avatar|character|persona/i.test(request)) return `I can help define an authorized avatar identity, voice, emotional delivery, knowledge, and production role. Provider-backed photorealistic sessions require the configured avatar runtime.${visible}`;
+  if (/movie|film|video|scene/i.test(request)) return `I can organize the request into script, casting, performance, shot, animation, rendering, and review stages. The full render and rigging workers are still being built and will remain labeled incomplete until their production tests pass.${visible}`;
+  return `I received your request: “${request.slice(0,280)}” I can prepare it in this browser now; authenticated tools, persistent agents, and external provider actions require a signed-in Sovereign session.${visible}`;
 }
 
 async function speakAnswer(text, emotion = 'calm') {
