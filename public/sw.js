@@ -1,4 +1,4 @@
-const CACHE = 'wilkerson-ai-shell-v4';
+const CACHE = 'wilkerson-ai-shell-v5';
 const APP_SHELL = [
   '/', '/index.html', '/styles.css', '/polish.css', '/avatar.css', '/app.js', '/manifest.webmanifest',
   '/icons/wilkerson-192.png', '/icons/wilkerson-512.png', '/icons/wilkerson-maskable-512.png'
