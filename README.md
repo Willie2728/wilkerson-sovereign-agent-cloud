@@ -2,6 +2,8 @@
 
 An original Wilkerson Collective control plane for governed agent computers, integrated into the existing Founder Tool Suite. It is inspired by the public category of cloud computers for agents but contains original code, visual design, permission architecture, and product language.
 
+See [CAPABILITY_AUDIT.md](CAPABILITY_AUDIT.md) for the tested Orgo, Base44, Firecrawl, Daily.co, and Unreal-workflow comparison and exact parity boundaries.
+
 ## Sovereign Cloud working now
 
 - Voice or text task intake through the WISDOM conversational avatar.

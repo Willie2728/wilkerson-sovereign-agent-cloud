@@ -8,18 +8,18 @@ let dictationState = null;
 let deferredInstallPrompt = null;
 
 const modes = {
-  sovereign: ['AGENT COMPUTER CONTROL PLANE', 'Wilkerson Sovereign Agent Cloud', 'Operate governed agent workspaces through WISDOM. Local sessions work now; cloud VM providers connect through explicit adapters and credentials.'],
-  forge: ['LOCAL APP GENERATION', 'Wilkerson Forge AI', 'Describe a focused web experience. The private local coding model creates a standalone page you can preview and download.'],
-  persona: ['TEXT · VOICE · SNAPSHOT VISION', 'Wilkerson Persona Live', 'Talk with WISDOM through the local model, hear the answer, and optionally share one camera snapshot for visible-scene context.'],
-  crawl: ['BOUNDED PUBLIC-WEB CRAWLING', 'Wilkerson Context Crawler', 'Crawl up to eight public pages on one website while respecting robots rules and blocking private-network targets.'],
-  context: ['PUBLIC PAGE EXTRACTION', 'Wilkerson Context Engine', 'Extract readable content, headings, links, title, and description from one public page.'],
-  qa: ['HTTP + ACCESSIBILITY REVIEW', 'Wilkerson Browser Pilot', 'Run a fast public-page check for titles, language, viewport, headings, and image alt text.'],
-  voice: ['PRIVATE WINDOWS SPEECH', 'Wilkerson Voice Engine', 'Turn text into playable and downloadable WAV audio without a cloud account or credits.'],
-  rooms: ['LOCAL WEBRTC DEVICES', 'Wilkerson Rooms', 'Start a private local camera and microphone preview. Multi-device calls require the future HTTPS and signaling layer.'],
-  motion: ['MEDIA WORKBENCH', 'Wilkerson MotionLab', 'Preview a local image or video with cinematic motion and export a production storyboard. Generative video is not claimed.'],
-  broadcast: ['MULTI-CHANNEL DRAFTING', 'Wilkerson Broadcast Studio', 'Turn one brief into organized draft copy. Nothing is posted automatically.'],
-  skills: ['AUDITED CAPABILITIES', 'Wilkerson Skill Exchange', 'Create portable skill manifests with explicit permissions, inputs, and outputs.'],
-  agent: ['GUARDRAILED ORCHESTRATION', 'Wilkerson Agent Core', 'Build an auditable workflow with approval gates; it does not silently perform external actions.']
+  sovereign: ['AGENT COMPUTER CONTROL PLANE', 'Wilkerson Sovereign Agent Cloud', 'Operate governed agent workspaces through WISDOM. Planning, approvals, audit, and the kill switch work now; actual cloud computers require the Orgo adapter and credentials.', 'PATTERNED AFTER: ORGO · PARTIAL'],
+  forge: ['LOCAL APP GENERATION', 'Wilkerson Forge AI', 'Describe a focused web experience and receive a standalone page you can preview and download. This is not a Base44 database, authentication, hosting, or backend replacement.', 'PATTERNED AFTER: BASE44 · FOCUSED EQUIVALENT'],
+  persona: ['TEXT · VOICE · SNAPSHOT VISION', 'Wilkerson Persona Live', 'Talk with WISDOM, hear the answer, and optionally share one user-approved camera snapshot for visible-scene context.', 'WILKERSON ORIGINAL MODULE'],
+  crawl: ['BOUNDED PUBLIC-WEB CRAWLING', 'Wilkerson Context Crawler', 'Crawl up to eight public pages on one website while respecting robots rules and blocking private-network targets.', 'PATTERNED AFTER: FIRECRAWL CRAWL · BOUNDED'],
+  context: ['PUBLIC PAGE EXTRACTION', 'Wilkerson Context Engine', 'Extract readable content, headings, links, title, and description from one public page.', 'PATTERNED AFTER: FIRECRAWL SCRAPE · BOUNDED'],
+  qa: ['HTTP + ACCESSIBILITY REVIEW', 'Wilkerson Browser Pilot', 'Run a fast public-page check for titles, language, viewport, headings, and image alt text.', 'WILKERSON ORIGINAL MODULE'],
+  voice: ['PRIVATE SPEECH', 'Wilkerson Voice Engine', 'Create downloadable Windows WAV speech locally, with browser speech as a hosted fallback.', 'WILKERSON ORIGINAL MODULE'],
+  rooms: ['LOCAL WEBRTC DEVICES', 'Wilkerson Rooms', 'Start a private local camera and microphone preview. It does not create a multi-participant Daily room until a provider adapter is configured.', 'PATTERNED AFTER: DAILY.CO · DEVICE FOUNDATION'],
+  motion: ['MEDIA PREVIS WORKBENCH', 'Wilkerson MotionLab', 'Preview a local image or video with cinematic motion and export a production storyboard. It is not an Unreal Engine real-time 3D editor.', 'PATTERNED AFTER: UNREAL ENGINE WORKFLOWS · PREVIS ONLY'],
+  broadcast: ['MULTI-CHANNEL DRAFTING', 'Wilkerson Broadcast Studio', 'Turn one brief into organized draft copy. Nothing is posted automatically.', 'WILKERSON ORIGINAL MODULE'],
+  skills: ['AUDITED CAPABILITIES', 'Wilkerson Skill Exchange', 'Create portable skill manifests with explicit permissions, inputs, and outputs.', 'WILKERSON ORIGINAL MODULE'],
+  agent: ['GUARDRAILED ORCHESTRATION', 'Wilkerson Agent Core', 'Build an auditable workflow with approval gates; it does not silently perform external actions.', 'WILKERSON ORIGINAL MODULE']
 };
 
 function escapeHtml(value = '') {
@@ -27,8 +27,8 @@ function escapeHtml(value = '') {
 }
 
 function toolIntro(mode) {
-  const [kicker, title, copy] = modes[mode];
-  return `<div class="tool-intro"><span class="eyebrow">${kicker}</span><h2>${title}</h2><p>${copy}</p></div>`;
+  const [kicker, title, copy, source] = modes[mode];
+  return `<div class="tool-intro"><span class="eyebrow">${kicker}</span><h2>${title}</h2><span class="source-chip">${source}</span><p>${copy}</p></div>`;
 }
 
 function setMode(mode) {
@@ -296,7 +296,13 @@ async function speakAnswer(text) {
     slot.innerHTML = `<audio id="generatedAudio" controls autoplay src="${data.audioUrl}"></audio><p><a class="download link-button" href="${data.audioUrl}" download="wilkerson-wisdom.wav">Download WAV</a></p>`;
     animateAudio($('#generatedAudio'));
     $('#generatedAudio').play().catch(() => {});
-  } catch (error) { if (slot) slot.innerHTML = `<small>${escapeHtml(error.message)}</small>`; }
+  } catch (error) {
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      if (slot) slot.innerHTML = '<small>Speaking with this browser because downloadable Windows WAV speech is unavailable on this host.</small>';
+    } else if (slot) slot.innerHTML = `<small>${escapeHtml(error.message)}</small>`;
+  }
 }
 
 async function startDictation() {
@@ -499,7 +505,14 @@ async function generateSpeech(event, text) {
     const data = await api('/api/tts', {text});
     $('#result').innerHTML = `<article class="result-card"><span class="eyebrow">VOICE READY</span><h2>Your local audio is ready</h2><audio id="generatedAudio" controls autoplay src="${data.audioUrl}"></audio><p><a class="download link-button" href="${data.audioUrl}" download="wilkerson-voice.wav">Download WAV</a></p><small>${escapeHtml(data.engine)}</small></article>`;
     $('#generatedAudio').play().catch(() => {});
-  } catch (error) { showError(error); }
+  } catch (error) {
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      $('#result').innerHTML = `<article class="result-card"><span class="eyebrow">BROWSER VOICE ACTIVE</span><h2>Speech is playing</h2><p>The hosted service cannot create a Windows WAV file, so this device's browser voice is being used.</p><button class="secondary-action" id="repeatBrowserSpeech">Play again</button><p class="boundary">Playback works here; WAV download requires the local Windows launcher.</p></article>`;
+      $('#repeatBrowserSpeech').onclick = () => { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text)); };
+    } else showError(error);
+  }
   finally { busy(button, false, 'Generate voice'); }
 }
 
