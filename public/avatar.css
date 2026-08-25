@@ -1,0 +1,15 @@
+.avatar-performance { transition: filter .25s, transform .25s; }
+.avatar-performance.emotion-happy { filter: saturate(1.12) brightness(1.04); }
+.avatar-performance.emotion-excited { filter: saturate(1.2) contrast(1.05); }
+.avatar-performance.emotion-empathetic { filter: sepia(.06) brightness(1.02); }
+.avatar-performance.emotion-serious { filter: saturate(.82) contrast(1.08); }
+.avatar-mouth { position:absolute; left:45%; top:68%; width:12%; height:2.2%; border-radius:50%; background:#2e1115cc; box-shadow:0 0 4px #fff4; transform-origin:center; opacity:.82; transition:transform 70ms,height 70ms; }
+.viseme-1 .avatar-mouth { height:4%; transform:scaleX(.8); }
+.viseme-2 .avatar-mouth { height:6%; transform:scaleX(.62); }
+.viseme-3 .avatar-mouth { height:3%; transform:scaleX(1.25); }
+.viseme-4 .avatar-mouth { height:5%; transform:scaleX(.95); }
+.avatar-state { position:absolute; right:9px; top:9px; background:#11184bcc; color:#fff; padding:6px 8px; border-radius:99px; font-size:7px; letter-spacing:1px; }
+.speech-toggle { display:flex; align-items:center; gap:8px; font-weight:600; }
+.speech-toggle input { width:auto; }
+.is-listening { box-shadow:0 0 0 3px #67d89566; }
+.is-thinking { filter:saturate(.7); }
