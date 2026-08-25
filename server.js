@@ -431,15 +431,29 @@ function cleanHtml(text) {
   return start >= 0 ? cleaned.slice(start) : cleaned;
 }
 
+function escapeStandalone(value = '') {
+  return String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+}
+
+function buildForgeContinuityPage(name, request) {
+  const safeName = escapeStandalone(name);
+  const safeRequest = escapeStandalone(request);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeName}</title><style>:root{--navy:#0b123c;--gold:#d7b75f;--paper:#f5f6fa}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui;background:var(--paper);color:#18203d}header{min-height:65vh;display:grid;place-items:center;padding:8vw;background:radial-gradient(circle at 78% 18%,#6859a866,transparent 30%),linear-gradient(135deg,#090f35,#251950);color:#fff;text-align:center}main{max-width:1000px;margin:-60px auto 60px;padding:20px}.eyebrow{color:var(--gold);font-size:11px;letter-spacing:3px;font-weight:800}h1{font:clamp(48px,8vw,88px)/1 Georgia;margin:18px 0}p{line-height:1.7}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:#fff;border-radius:18px;padding:24px;box-shadow:0 18px 45px #11184b17}.card button{border:0;border-radius:9px;padding:11px 14px;background:var(--navy);color:#fff;font-weight:800;cursor:pointer}.notice{margin-top:18px;padding:16px;border-left:4px solid var(--gold);background:#fff}@media(max-width:700px){.cards{grid-template-columns:1fr}header{min-height:55vh}}@media(prefers-reduced-motion:no-preference){.card{transition:.25s}.card:hover{transform:translateY(-6px)}}</style></head><body><header><div><span class="eyebrow">WILKERSON FORGE</span><h1>${safeName}</h1><p>${safeRequest}</p></div></header><main><section class="cards"><article class="card"><h2>Discover</h2><p>Explore the core idea through a clear, focused experience.</p><button data-message="Discovery opened">Explore</button></article><article class="card"><h2>Connect</h2><p>Turn the concept into an actionable next step.</p><button data-message="Connection pathway opened">Connect</button></article><article class="card"><h2>Build</h2><p>Continue refining this standalone foundation.</p><button data-message="Build pathway opened">Continue</button></article></section><p class="notice" id="notice" aria-live="polite">Every control works locally. No data leaves this page.</p></main><script>document.querySelectorAll('button').forEach(button=>button.addEventListener('click',()=>document.querySelector('#notice').textContent=button.dataset.message));</script></body></html>`;
+}
+
 async function buildWithForge(body) {
   const name = String(body.name || 'Wilkerson Experience').trim().slice(0, 100);
   const request = String(body.prompt || '').trim().slice(0, 4_000);
   if (!request) throw new Error('Describe the page you want to build.');
   const prompt = `You are Wilkerson Forge, a local coding engine. Create one polished, responsive, standalone HTML document for this project.\nPROJECT NAME: ${name}\nREQUEST: ${request}\nREQUIREMENTS: Return only complete HTML beginning with <!doctype html>. Put all CSS and JavaScript inside the document. Use no external libraries, remote assets, forms that transmit data, tracking, network requests, or dead buttons. Every visible button must perform a safe local interaction. Use accessible semantic HTML, strong mobile design, cinematic navy and gold visual quality, and respect prefers-reduced-motion. Keep the result under 1,100 tokens.`;
-  const generated = await callOllama({model:codingModel, prompt, maxTokens:1_100, temperature:0.25});
-  const html = cleanHtml(generated.text);
-  if (!/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) throw new Error('The small local model did not produce a complete page. Try a shorter, more specific request.');
-  return {...generated, html, boundary:'Local 3B model; suitable for simple pages, not production full-stack systems.'};
+  try {
+    const generated = await callOllama({model:codingModel, prompt, maxTokens:1_100, temperature:0.25});
+    const html = cleanHtml(generated.text);
+    if (!/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) throw new Error('Incomplete model output.');
+    return {...generated, html, boundary:'Local 3B model; suitable for simple standalone pages, not Base44-style production full-stack systems.'};
+  } catch {
+    return {text:'',elapsedMs:0,model:'Wilkerson Forge continuity template',html:buildForgeContinuityPage(name,request),boundary:'Hosted-safe standalone page fallback. It creates a working responsive front end, not Base44 databases, authentication, integrations, or deployment.'};
+  }
 }
 
 async function personaChat(body) {
@@ -447,7 +461,17 @@ async function personaChat(body) {
   if (!message) throw new Error('Enter a message.');
   const visualContext = String(body.visualContext || '').trim().slice(0, 1_500);
   const prompt = `${MODEL_TRUST_INSTRUCTIONS}\n\nYou are WISDOM, the private local conversational guide for Wilkerson Collective. Answer the authenticated user's actual question directly in 1-4 concise sentences. Be warm, practical, and honest about uncertainty. Never claim to be Willie, never invent memories, and never imply that a camera is active unless visual context is supplied. Available local tools: focused standalone web-page generation, bounded public-site crawling, single-page extraction and QA, Windows speech and WAV export, text conversation, user-approved snapshot vision, and local camera/microphone preview. Current limits: the laptop runs one model at a time; snapshot vision is not real-time; there is no photorealistic talking-avatar lip sync, multi-device video room, generative video, or 3D motion capture yet. ${visualContext ? formatUntrustedForModel(visualContext,'approved_snapshot_observation') : 'No camera snapshot is available.'}\n<TRUSTED_COMMAND>${message}</TRUSTED_COMMAND>\nWISDOM:`;
-  return callOllama({model:codingModel, prompt, maxTokens:220, temperature:0.55});
+  try {
+    return await callOllama({model:codingModel, prompt, maxTokens:220, temperature:0.55});
+  } catch {
+    const lower = message.toLowerCase();
+    let text = 'I am online in continuity mode. I can guide you through the working crawler, page inspector, browser QA, Forge page builder, voice controls, rooms device test, media storyboard, drafts, skills, and governed task planning.';
+    if (/forge|build|website|app/.test(lower)) text = 'Open Forge AI to create and download a working standalone web page. Full Base44-style databases, accounts, integrations, and hosting are not included.';
+    else if (/crawl|extract|research|website/.test(lower)) text = 'Use Context Crawler for a bounded same-site crawl or Page Extractor for one public page. Private networks, logins, paywalls, and bypasses remain blocked.';
+    else if (/room|video|camera|microphone/.test(lower)) text = 'Wilkerson Rooms can test this device’s camera and microphone now. A multi-participant Daily.co-style room still requires a configured calling provider.';
+    else if (/computer|orgo|agent/.test(lower)) text = 'Sovereign Cloud provides authenticated planning, scoped authority, approvals, audit history, and a kill switch. Real Orgo computer provisioning requires the Orgo adapter credentials.';
+    return {text,elapsedMs:0,model:'WISDOM continuity mode'};
+  }
 }
 
 async function personaVision(body) {
