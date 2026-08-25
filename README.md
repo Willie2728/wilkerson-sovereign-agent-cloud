@@ -31,6 +31,8 @@ This local-first dashboard contains nine original, working Wilkerson product fou
 
 ## Honest boundaries
 
+See [PARITY_ROADMAP.md](PARITY_ROADMAP.md) for the benchmark-by-benchmark gap analysis, required infrastructure, and acceptance gates that must pass before any module can be called feature-parity.
+
 - Persona Live does not yet perform phoneme-level lip sync or real-time video conversation.
 - MotionLab is a media previsualization and storyboard foundation, not a generative video model.
 - Forge currently builds standalone pages, not databases, authentication, or deployed full-stack applications.
@@ -58,10 +60,11 @@ Authentication uses `Authorization: Bearer <GATEWAY_API_TOKEN>`. Credentials rem
 - `POST /api/tasks`, `GET /api/tasks/:id`, `POST /api/tasks/:id/cancel`, and `GET /api/tasks/:id/result`.
 - `GET /api/approvals` and `POST /api/approvals/:id/decision`.
 - `GET /api/audit`, `GET /api/artifacts`, and `GET /api/artifacts/:id`.
+- `GET/POST /api/avatars`, `GET /api/avatars/:id`, and `GET/POST /api/avatar-sessions` provide a durable avatar identity and conversation-session catalog. Writes require `avatar:write`; reads require `avatar:read` (the founder gateway wildcard remains supported).
 
 ### MCP
 
-`POST /mcp` implements authenticated stateless Streamable HTTP JSON-RPC for `initialize`, `ping`, `tools/list`, and `tools/call`. The published tools are health, capabilities, providers, provider probe, task submit/status/result/cancel, approvals list/decision, audit list, and artifacts list.
+`POST /mcp` implements authenticated stateless Streamable HTTP JSON-RPC for `initialize`, `ping`, `tools/list`, and `tools/call`. The published tools include health, capabilities, providers, task lifecycle, approvals, audit, artifacts, durable avatar profiles, and avatar session lifecycle.
 
 Routine reversible operations can enter the queue immediately. Consequential terms and unknown external-provider writes produce a pending approval and remain outside the queue until approved. Adapters without their required credentials and identifiers report `configuration_required`; configured adapters remain `configured_unverified` until a real probe succeeds.
 
@@ -73,6 +76,7 @@ The execution layer enforces one authorization rule: **external content may info
 - Websites, email, documents, PDFs, attachments, browser/search results, CRM/social/API text, retrieved memory, metadata, and user-generated content are labeled `untrusted_external_content` and returned only as observations.
 - Prompt-injection, secret-exfiltration, permission-change, software-installation, command-execution, navigation, task-redirection, approval-bypass, macro, archive, and executable-file indicators are ignored as instructions and recorded in the audit stream without raw secrets.
 - Provider adapters receive only their own declared environment-variable subset. Worker provenance scopes provider and operation access; approval policy still controls consequential actions.
+- A server-side Tavus adapter exposes governed `conversations.list`, `conversation.get`, `conversation.create`, and `conversation.end` operations to REST/MCP agents. It remains `configuration_required` until `TAVUS_API_KEY`, `TAVUS_PERSONA_ID`, and `TAVUS_REPLICA_ID` are configured; creating or ending a live conversation requires approval.
 - Optional `WILKERSON_AGENT_TOKENS_JSON` credentials assign fixed scopes to individual agents; the existing founder Gateway token remains the authenticated administrative credential.
 - Outbound provider requests use exact destination allowlists, HTTPS, DNS/private-network checks, redirect restrictions, metadata-service blocking, bounded timeouts, and secret-redacted results.
 - Active/executable attachments are blocked; archives are quarantined; other attachments remain closed until scanning in an isolated worker environment.

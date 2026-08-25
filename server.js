@@ -7,6 +7,7 @@ import {promisify} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {createExecutionLayer} from './src/execution-layer.js';
 import {handleMcp} from './src/mcp.js';
+import {AvatarService} from './src/avatar-service.js';
 import {assertSafeOutboundUrl, deepRedact, formatUntrustedForModel, isPrivateAddress, MODEL_TRUST_INSTRUCTIONS, PROVENANCE, scanUntrustedContent, TRUST_BOUNDARY} from './src/security.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,7 @@ const allowedOrigins = new Set([
   'http://localhost:8788'
 ]);
 const executionLayer = await createExecutionLayer();
+const avatarService = executionLayer ? new AvatarService(executionLayer.store) : null;
 const mime = {
   '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8',
   '.js':'text/javascript; charset=utf-8', '.json':'application/json; charset=utf-8',
@@ -526,11 +528,38 @@ const server = http.createServer(async (request, response) => {
       response.writeHead(200, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','MCP-Protocol-Version':'2025-06-18','X-Content-Type-Options':'nosniff'});
       return response.end(JSON.stringify(result));
     }
-    const gatewayRoute = requestPath === '/api/capabilities' || requestPath === '/api/providers' || requestPath.startsWith('/api/providers/') || requestPath === '/api/tasks' || requestPath.startsWith('/api/tasks/') || requestPath === '/api/approvals' || requestPath.startsWith('/api/approvals/') || requestPath === '/api/audit' || requestPath === '/api/artifacts' || requestPath.startsWith('/api/artifacts/');
+    const gatewayRoute = requestPath === '/api/capabilities' || requestPath === '/api/providers' || requestPath.startsWith('/api/providers/') || requestPath === '/api/tasks' || requestPath.startsWith('/api/tasks/') || requestPath === '/api/approvals' || requestPath.startsWith('/api/approvals/') || requestPath === '/api/audit' || requestPath === '/api/artifacts' || requestPath.startsWith('/api/artifacts/') || requestPath === '/api/avatars' || requestPath.startsWith('/api/avatars/') || requestPath === '/api/avatar-sessions' || requestPath.startsWith('/api/avatar-sessions/');
     if (gatewayRoute) {
       if (!executionLayer) return gatewayUnavailable(response);
       if (!gatewayAccess(request)) return json(response, 401, {ok:false,error:'Bearer authentication required.'});
       const authorityContext = gatewayRequestContext(request,'rest');
+      if (request.method === 'GET' && requestPath === '/api/avatars') {
+        executionLayer.requireScope(authorityContext,['avatar:read']);
+        return json(response,200,{ok:true,avatars:await avatarService.listProfiles()});
+      }
+      if (request.method === 'POST' && requestPath === '/api/avatars') {
+        const authority = executionLayer.requireScope(authorityContext,['avatar:write']);
+        return json(response,201,{ok:true,avatar:await avatarService.createProfile(await readBody(request),authority.principal)});
+      }
+      const avatarMatch = requestPath.match(/^\/api\/avatars\/([0-9a-f-]+)$/i);
+      if (request.method === 'GET' && avatarMatch) {
+        executionLayer.requireScope(authorityContext,['avatar:read']);
+        const avatar = await avatarService.getProfile(avatarMatch[1]);
+        return avatar ? json(response,200,{ok:true,avatar}) : json(response,404,{ok:false,error:'Avatar profile not found.'});
+      }
+      if (request.method === 'GET' && requestPath === '/api/avatar-sessions') {
+        executionLayer.requireScope(authorityContext,['avatar:read']);
+        return json(response,200,{ok:true,sessions:await avatarService.listSessions(requestUrl.searchParams.get('avatar_id'))});
+      }
+      if (request.method === 'POST' && requestPath === '/api/avatar-sessions') {
+        const authority = executionLayer.requireScope(authorityContext,['avatar:write']);
+        return json(response,201,{ok:true,session:await avatarService.createSession(await readBody(request),authority.principal)});
+      }
+      const avatarSessionEnd = requestPath.match(/^\/api\/avatar-sessions\/([0-9a-f-]+)\/end$/i);
+      if (request.method === 'POST' && avatarSessionEnd) {
+        const authority = executionLayer.requireScope(authorityContext,['avatar:write']);
+        return json(response,200,{ok:true,session:await avatarService.endSession(avatarSessionEnd[1],authority.principal)});
+      }
       if (request.method === 'GET' && requestPath === '/api/capabilities') return json(response,200,{ok:true,...await executionLayer.capabilities()});
       if (request.method === 'GET' && requestPath === '/api/providers') return json(response,200,{ok:true,providers:await executionLayer.providersList()});
       const providerProbe = requestPath.match(/^\/api\/providers\/([^/]+)\/probe$/);

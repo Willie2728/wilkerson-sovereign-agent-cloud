@@ -7,7 +7,9 @@ const routineOperations = new Set([
   'system.echo',
   'modules.capabilities',
   'provider.probe',
-  'providers.list'
+  'providers.list',
+  'conversations.list',
+  'conversation.get'
 ]);
 
 export function evaluatePolicy({command = '', operation = '', provider = 'wilkerson'}) {

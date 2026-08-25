@@ -53,7 +53,7 @@ function setMode(mode) {
     panel.innerHTML = `${toolIntro(mode)}<form id="forgeForm"><label for="forgePrompt">What should the page do?</label><textarea id="forgePrompt" required>Build a cinematic luxury university welcome page with a moving campus atmosphere, three interactive programs, and a working guided-tour button.</textarea><div class="input-row"><input id="forgeName" value="Wilkerson University Experience" aria-label="Project name"><button>Generate locally</button></div><small>First generation can take 1–5 minutes on this laptop. Best for focused standalone pages. Dyad is also installed for multi-file local projects.</small></form>`;
     $('#forgeForm').onsubmit = buildPage;
   } else if (mode === 'persona') {
-    panel.innerHTML = `${toolIntro(mode)}<div class="persona-builder"><div class="portrait-shell" id="portraitShell"><img src="willie-approved-headshot.png" alt="Approved portrait of Willie Wilkerson"><span class="consent-badge">APPROVED PORTRAIT</span></div><form id="personaForm"><label for="personaText">Talk with WISDOM</label><textarea id="personaText" maxlength="2000" required placeholder="What can this local AI studio help me accomplish today?" aria-describedby="dictationStatus"></textarea><div class="dictation-controls"><button type="button" class="secondary-action microphone-action" id="startDictation" aria-label="Start microphone dictation">🎙 Dictate</button><button type="button" class="secondary-action" id="stopDictation" disabled>Stop</button><button type="button" class="secondary-action" id="clearPersona">Clear text</button></div><small id="dictationStatus" class="dictation-status">Type freely, or select Dictate and speak for up to 15 seconds. Audio is recognized locally.</small><div class="action-row"><button>Ask and hear answer</button><button type="button" class="secondary-action" id="startCamera">Start camera</button></div><button type="button" class="secondary-action" id="describeSnapshot" disabled>Share one snapshot with local vision</button><small id="cameraNotice">Camera remains off until you start it. Snapshot analysis is local and user-initiated.</small></form></div><div class="camera-stage" id="cameraStage" hidden><video id="cameraVideo" autoplay muted playsinline></video><button type="button" class="secondary-action" id="stopCamera">Stop camera</button></div>`;
+    panel.innerHTML = `${toolIntro(mode)}<div class="persona-builder"><div class="portrait-shell avatar-performance emotion-calm" id="portraitShell"><img src="willie-approved-headshot.png" alt="Approved portrait of Willie Wilkerson"><span class="avatar-mouth" aria-hidden="true"></span><span class="avatar-state" id="avatarState">READY · CALM</span><span class="consent-badge">APPROVED PORTRAIT</span></div><form id="personaForm"><label for="personaText">Talk with WISDOM</label><textarea id="personaText" maxlength="2000" required placeholder="What can this local AI studio help me accomplish today?" aria-describedby="dictationStatus"></textarea><div class="input-row"><label for="avatarEmotion">Delivery</label><select id="avatarEmotion"><option value="calm">Calm</option><option value="empathetic">Empathetic</option><option value="happy">Happy</option><option value="excited">Excited</option><option value="serious">Serious</option></select></div><label class="speech-toggle"><input type="checkbox" id="autoSpeak"> Automatically speak every reply on this device</label><div class="dictation-controls"><button type="button" class="secondary-action microphone-action" id="startDictation" aria-label="Start microphone dictation">🎙 Dictate</button><button type="button" class="secondary-action" id="stopDictation" disabled>Stop</button><button type="button" class="secondary-action" id="clearPersona">Clear text</button></div><small id="dictationStatus" class="dictation-status">Type freely, or select Dictate and speak for up to 15 seconds. Audio is recognized locally.</small><div class="action-row"><button>Ask WISDOM</button><button type="button" class="secondary-action" id="startCamera">Start camera</button></div><button type="button" class="secondary-action" id="describeSnapshot" disabled>Share one snapshot with local vision</button><small id="cameraNotice">Camera remains off until you start it. Snapshot analysis is local and user-initiated.</small></form></div><div class="camera-stage" id="cameraStage" hidden><video id="cameraVideo" autoplay muted playsinline></video><button type="button" class="secondary-action" id="stopCamera">Stop camera</button></div>`;
     $('#personaForm').onsubmit = chatWithPersona;
     $('#startDictation').onclick = startDictation;
     $('#stopDictation').onclick = () => stopDictation(false);
@@ -61,6 +61,11 @@ function setMode(mode) {
     $('#startCamera').onclick = startCamera;
     $('#stopCamera').onclick = stopCamera;
     $('#describeSnapshot').onclick = describeSnapshot;
+    $('#autoSpeak').checked = localStorage.getItem('wilkersonAutoSpeak') !== 'false';
+    $('#autoSpeak').onchange = event => localStorage.setItem('wilkersonAutoSpeak',String(event.target.checked));
+    $('#avatarEmotion').value = localStorage.getItem('wilkersonAvatarEmotion') || 'calm';
+    $('#avatarEmotion').onchange = event => { localStorage.setItem('wilkersonAvatarEmotion',event.target.value); setAvatarPerformance('ready',event.target.value); };
+    setAvatarPerformance('ready',$('#avatarEmotion').value);
   } else if (mode === 'crawl') {
     panel.innerHTML = `${toolIntro(mode)}<form id="crawlForm"><label for="crawlUrl">Website name or address</label><input id="crawlUrl" type="text" inputmode="url" autocomplete="url" required placeholder="youtube or youtube.com"><small class="input-help">You do not need to type https:// — it will be added automatically.</small><div class="input-row"><select id="crawlPages"><option value="3">Up to 3 pages</option><option value="5">Up to 5 pages</option><option value="8">Up to 8 pages</option></select><select id="crawlDepth" aria-label="Crawl depth"><option value="1">Depth 1</option><option value="2">Depth 2</option></select><button>Crawl website</button></div><small>Same-origin only · robots-aware · no login, CAPTCHA, paywall, or anti-bot bypass</small></form>`;
     $('#crawlForm').onsubmit = crawlSite;
@@ -306,26 +311,26 @@ async function chatWithPersona(event) {
   try {
     const data = await api('/api/persona/chat', {message, visualContext});
     const answer = data.result.text;
-    $('#result').innerHTML = `<article class="result-card voice-result"><div class="speaking-portrait" id="speakingPortrait"><img src="willie-approved-headshot.png" alt="Approved Willie portrait"><div class="voice-rings"></div></div><div><span class="eyebrow">WISDOM · LOCAL MODEL</span><div class="chat-bubble user">${escapeHtml(message)}</div><div class="chat-bubble assistant">${escapeHtml(answer)}</div><div id="audioSlot"><button class="secondary-action" id="hearAnswer">Hear answer</button></div><small>${escapeHtml(data.result.model)} · ${(data.result.elapsedMs / 1000).toFixed(1)} seconds</small></div></article>`;
-    $('#hearAnswer').onclick = () => speakAnswer(answer);
-    speakAnswer(answer);
+    $('#result').innerHTML = `<article class="result-card voice-result"><div class="speaking-portrait avatar-performance emotion-calm" id="speakingPortrait"><img src="willie-approved-headshot.png" alt="Approved Willie portrait"><span class="avatar-mouth" aria-hidden="true"></span><div class="voice-rings"></div></div><div><span class="eyebrow">WISDOM · LOCAL MODEL</span><div class="chat-bubble user">${escapeHtml(message)}</div><div class="chat-bubble assistant">${escapeHtml(answer)}</div><div id="audioSlot"><button class="secondary-action" id="hearAnswer">Hear answer</button></div><small>${escapeHtml(data.result.model)} · ${(data.result.elapsedMs / 1000).toFixed(1)} seconds</small></div></article>`;
+    const emotion = $('#avatarEmotion')?.value || 'calm';
+    $('#hearAnswer').onclick = () => speakAnswer(answer,emotion);
+    if ($('#autoSpeak')?.checked !== false) speakAnswer(answer,emotion);
   } catch (error) { showError(error); }
   finally { busy(button, false, 'Ask and hear answer'); }
 }
 
-async function speakAnswer(text) {
+async function speakAnswer(text, emotion = 'calm') {
   const slot = $('#audioSlot');
   if (slot) slot.innerHTML = '<small>Creating local speech…</small>';
   try {
     const data = await api('/api/tts', {text});
     if (!slot) return;
     slot.innerHTML = `<audio id="generatedAudio" controls autoplay src="${data.audioUrl}"></audio><p><a class="download link-button" href="${data.audioUrl}" download="wilkerson-wisdom.wav">Download WAV</a></p>`;
-    animateAudio($('#generatedAudio'));
+    animateAudio($('#generatedAudio'),emotion);
     $('#generatedAudio').play().catch(() => {});
   } catch (error) {
     if ('speechSynthesis' in window) {
-      speechSynthesis.cancel();
-      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      speakBrowserAvatar(text,emotion);
       if (slot) slot.innerHTML = '<small>Speaking with this browser because downloadable Windows WAV speech is unavailable on this host.</small>';
     } else if (slot) slot.innerHTML = `<small>${escapeHtml(error.message)}</small>`;
   }
@@ -577,11 +582,32 @@ function buildWorkflow(event) {
   $('#result').innerHTML = `<article class="result-card"><span class="eyebrow">AUDITABLE WORKFLOW</span><h2>${escapeHtml(goal)}</h2><ol>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol><p class="boundary">This is a plan. No external action was executed.</p></article>`;
 }
 
-function animateAudio(audio) {
+function setAvatarPerformance(state = 'ready', emotion = 'calm', viseme = 0) {
+  const portrait = $('#speakingPortrait') || $('#portraitShell');
+  if (!portrait) return;
+  for (const name of [...portrait.classList]) if (/^(emotion-|viseme-|is-(speaking|listening|thinking))/.test(name)) portrait.classList.remove(name);
+  portrait.classList.add(`emotion-${emotion}`,`viseme-${viseme}`);
+  if (state !== 'ready') portrait.classList.add(`is-${state}`);
+  const label = $('#avatarState');
+  if (label) label.textContent = `${state.toUpperCase()} · ${emotion.toUpperCase()}`;
+}
+
+function speakBrowserAvatar(text, emotion = 'calm') {
+  const utterance = new SpeechSynthesisUtterance(text);
+  const delivery = {calm:[.92,.96],empathetic:[.9,1.02],happy:[1.03,1.12],excited:[1.12,1.18],serious:[.88,.9]}[emotion] || [1,1];
+  utterance.rate = delivery[0]; utterance.pitch = delivery[1];
+  utterance.onstart = () => setAvatarPerformance('speaking',emotion,1);
+  utterance.onboundary = event => setAvatarPerformance('speaking',emotion,(event.charIndex % 4) + 1);
+  utterance.onend = utterance.onerror = () => setAvatarPerformance('ready',emotion,0);
+  speechSynthesis.cancel(); speechSynthesis.speak(utterance);
+}
+
+function animateAudio(audio, emotion = 'calm') {
   const portrait = $('#speakingPortrait');
   if (!audio || !portrait) return;
-  audio.onplay = () => portrait.classList.add('is-speaking');
-  audio.onpause = audio.onended = () => portrait.classList.remove('is-speaking');
+  audio.onplay = () => setAvatarPerformance('speaking',emotion,1);
+  audio.ontimeupdate = () => setAvatarPerformance('speaking',emotion,(Math.floor(audio.currentTime * 7) % 4) + 1);
+  audio.onpause = audio.onended = () => setAvatarPerformance('ready',emotion,0);
 }
 
 function busy(button, on, label) { if (button) { button.disabled = on; button.textContent = label; } }

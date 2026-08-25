@@ -123,6 +123,85 @@ class WilkersonAdapter extends ProviderAdapter {
   }
 }
 
+class TavusAdapter extends ProviderAdapter {
+  constructor(env) {
+    super({
+      id:'tavus', label:'Tavus Realtime Avatars', env,
+      requiredEnv:['TAVUS_API_KEY','TAVUS_PERSONA_ID','TAVUS_REPLICA_ID'],
+      capabilities:['provider.probe','conversations.list','conversation.get','conversation.create','conversation.end']
+    });
+  }
+
+  headers() {
+    return {'x-api-key':this.scopedEnv.TAVUS_API_KEY,Accept:'application/json','Content-Type':'application/json'};
+  }
+
+  request(path, options = {}) {
+    return fetchJson(`https://tavusapi.com${path}`,{...options,headers:{...this.headers(),...(options.headers || {})}},15_000,{approvedHosts:['tavusapi.com'],env:this.scopedEnv});
+  }
+
+  async probe() {
+    const config = this.configuration();
+    if (config.missingConfig.length) return config;
+    const detail = await this.request('/v2/conversations?limit=1&page=1');
+    return {...config,status:'connected',missingConfig:[],detail:{conversationReadVerified:Array.isArray(detail?.data),totalCount:Number(detail?.total_count || 0)}};
+  }
+
+  async execute(task) {
+    if (task.operation === 'provider.probe') return this.probe();
+    if (task.provenance?.classification !== PROVENANCE.TRUSTED_COMMAND && task.provenance?.classification !== PROVENANCE.TRUSTED_SYSTEM) {
+      throw Object.assign(new Error('Provider execution requires trusted gateway provenance.'),{code:'trusted_provenance_required'});
+    }
+    if (task.provenance?.authenticated !== true || !task.provenance?.scope?.includes(`operation:${task.operation}`)) {
+      throw Object.assign(new Error('Provider execution is outside the authenticated task scope.'),{code:'task_scope_violation'});
+    }
+    const input = task.input || {};
+    if (task.operation === 'conversations.list') {
+      const limit = Math.min(50,Math.max(1,Number(input.limit || 10)));
+      const page = Math.max(1,Number(input.page || 1));
+      const status = input.status === 'active' || input.status === 'ended' ? `&status=${input.status}` : '';
+      return this.request(`/v2/conversations?limit=${limit}&page=${page}${status}`);
+    }
+    if (task.operation === 'conversation.get') {
+      const id = safeProviderId(input.conversationId,'conversationId');
+      return this.request(`/v2/conversations/${encodeURIComponent(id)}?verbose=${input.verbose === true}`);
+    }
+    if (task.operation === 'conversation.create') {
+      const body = {
+        persona_id:String(input.personaId || this.scopedEnv.TAVUS_PERSONA_ID),
+        replica_id:String(input.replicaId || this.scopedEnv.TAVUS_REPLICA_ID),
+        conversation_name:String(input.name || 'Wilkerson Sovereign Conversation').slice(0,120),
+        conversational_context:String(input.context || '').slice(0,12_000),
+        custom_greeting:String(input.greeting || '').slice(0,1_000),
+        audio_only:input.audioOnly === true,
+        require_auth:input.requireAuth === true,
+        max_participants:Math.min(10,Math.max(2,Number(input.maxParticipants || 2))),
+        test_mode:input.testMode === true
+      };
+      return this.request('/v2/conversations',{method:'POST',body:JSON.stringify(body)});
+    }
+    if (task.operation === 'conversation.end') {
+      const id = safeProviderId(input.conversationId,'conversationId');
+      return this.request(`/v2/conversations/${encodeURIComponent(id)}/end`,{method:'POST'});
+    }
+    return super.execute(task);
+  }
+
+  async verify(task, result) {
+    if (task.operation === 'conversation.create') return {verified:Boolean(result?.conversation_id && result?.conversation_url),method:'tavus_conversation_contract'};
+    if (task.operation === 'conversation.get') return {verified:Boolean(result?.conversation_id),method:'tavus_conversation_contract'};
+    if (task.operation === 'conversations.list') return {verified:Array.isArray(result?.data),method:'tavus_conversation_contract'};
+    if (task.operation === 'conversation.end') return {verified:true,method:'tavus_http_success'};
+    return super.verify(task,result);
+  }
+}
+
+function safeProviderId(value, field) {
+  const id = String(value || '').trim();
+  if (!/^[A-Za-z0-9_-]{3,128}$/.test(id)) throw Object.assign(new Error(`${field} is invalid.`),{code:'invalid_provider_input'});
+  return id;
+}
+
 function bearer(token) {
   return {Authorization:`Bearer ${token}`, Accept:'application/json'};
 }
@@ -130,6 +209,7 @@ function bearer(token) {
 export function createProviderRegistry(env = process.env) {
   const providers = [
     new WilkersonAdapter(env),
+    new TavusAdapter(env),
     new ProviderAdapter({
       id:'orgo', label:'Orgo Computers', env,
       requiredEnv:['ORGO_API_KEY','ORGO_WORKSPACE_ID'],
