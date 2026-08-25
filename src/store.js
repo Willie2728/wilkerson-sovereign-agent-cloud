@@ -96,6 +96,38 @@ CREATE TABLE IF NOT EXISTS security_state (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO security_state (id) VALUES ('concierge') ON CONFLICT (id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS avatar_profiles (
+  id uuid PRIMARY KEY,
+  name text NOT NULL,
+  provider text NOT NULL,
+  provider_persona_id text,
+  provider_replica_id text,
+  voice_profile text,
+  system_prompt text NOT NULL DEFAULT '',
+  knowledge_tags jsonb NOT NULL DEFAULT '[]'::jsonb,
+  capabilities jsonb NOT NULL DEFAULT '[]'::jsonb,
+  likeness_consent text NOT NULL,
+  consent_reference text,
+  status text NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS avatar_sessions (
+  id uuid PRIMARY KEY,
+  avatar_id uuid NOT NULL REFERENCES avatar_profiles(id) ON DELETE RESTRICT,
+  provider text NOT NULL,
+  provider_session_id text,
+  conversation_url text,
+  status text NOT NULL,
+  context text NOT NULL DEFAULT '',
+  created_by text NOT NULL,
+  ended_by text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  ended_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS avatar_sessions_avatar_idx ON avatar_sessions(avatar_id, created_at DESC);
 `;
 
 function mapTask(row) {
@@ -118,6 +150,16 @@ function mapSecurityState(row) {
 function mapApproval(row) {
   if (!row) return null;
   return {id:row.id, taskId:row.task_id, status:row.status, reason:row.reason, requestedAt:row.requested_at, decidedAt:row.decided_at, decidedBy:row.decided_by, decisionNote:row.decision_note};
+}
+
+function mapAvatar(row) {
+  if (!row) return null;
+  return {id:row.id,name:row.name,provider:row.provider,providerPersonaId:row.provider_persona_id,providerReplicaId:row.provider_replica_id,voiceProfile:row.voice_profile,systemPrompt:row.system_prompt,knowledgeTags:row.knowledge_tags,capabilities:row.capabilities,likenessConsent:row.likeness_consent,consentReference:row.consent_reference,status:row.status,createdBy:row.created_by,createdAt:row.created_at,updatedAt:row.updated_at};
+}
+
+function mapAvatarSession(row) {
+  if (!row) return null;
+  return {id:row.id,avatarId:row.avatar_id,provider:row.provider,providerSessionId:row.provider_session_id,conversationUrl:row.conversation_url,status:row.status,context:row.context,createdBy:row.created_by,endedBy:row.ended_by,createdAt:row.created_at,updatedAt:row.updated_at,endedAt:row.ended_at};
 }
 
 export class PostgresStore {
@@ -156,6 +198,16 @@ export class PostgresStore {
     const result = await this.pool.query('SELECT * FROM providers ORDER BY id');
     return result.rows.map(row => this.mapProvider(row));
   }
+
+  async createAvatarProfile(profile) {
+    const result = await this.pool.query(`INSERT INTO avatar_profiles (id,name,provider,provider_persona_id,provider_replica_id,voice_profile,system_prompt,knowledge_tags,capabilities,likeness_consent,consent_reference,status,created_by,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,[profile.id,profile.name,profile.provider,profile.providerPersonaId||null,profile.providerReplicaId||null,profile.voiceProfile||null,profile.systemPrompt,JSON.stringify(profile.knowledgeTags),JSON.stringify(profile.capabilities),profile.likenessConsent,profile.consentReference||null,profile.status,profile.createdBy,profile.createdAt,profile.updatedAt]);
+    return mapAvatar(result.rows[0]);
+  }
+  async listAvatarProfiles(){const result=await this.pool.query('SELECT * FROM avatar_profiles ORDER BY created_at DESC');return result.rows.map(mapAvatar);}
+  async getAvatarProfile(id){const result=await this.pool.query('SELECT * FROM avatar_profiles WHERE id=$1',[id]);return mapAvatar(result.rows[0]);}
+  async createAvatarSession(session){const result=await this.pool.query(`INSERT INTO avatar_sessions (id,avatar_id,provider,provider_session_id,conversation_url,status,context,created_by,created_at,updated_at,ended_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,[session.id,session.avatarId,session.provider,session.providerSessionId||null,session.conversationUrl||null,session.status,session.context,session.createdBy,session.createdAt,session.updatedAt,session.endedAt]);return mapAvatarSession(result.rows[0]);}
+  async listAvatarSessions(avatarId=null){const result=await this.pool.query('SELECT * FROM avatar_sessions WHERE ($1::uuid IS NULL OR avatar_id=$1) ORDER BY created_at DESC',[avatarId||null]);return result.rows.map(mapAvatarSession);}
+  async updateAvatarSession(id,changes){const result=await this.pool.query(`UPDATE avatar_sessions SET status=COALESCE($2,status),ended_at=COALESCE($3,ended_at),ended_by=COALESCE($4,ended_by),updated_at=now() WHERE id=$1 RETURNING *`,[id,changes.status||null,changes.endedAt||null,changes.endedBy||null]);return mapAvatarSession(result.rows[0]);}
 
   async createTask(task, approvalReason) {
     const client = await this.pool.connect();
@@ -315,7 +367,7 @@ export class PostgresStore {
 export class MemoryStore {
   constructor() {
     this.kind = 'memory-test';
-    this.providers = new Map(); this.tasks = new Map(); this.approvals = new Map(); this.audits = []; this.artifacts = new Map(); this.leases = new Map();
+    this.providers = new Map(); this.tasks = new Map(); this.approvals = new Map(); this.audits = []; this.artifacts = new Map(); this.leases = new Map(); this.avatarProfiles = new Map(); this.avatarSessions = new Map();
     this.securityState = {killSwitchActive:false,indicatorCount:0,windowStartedAt:new Date().toISOString(),killedAt:null,reason:null,updatedAt:new Date().toISOString()};
   }
   async init() {}
@@ -323,6 +375,12 @@ export class MemoryStore {
   async ping() { return {now:new Date()}; }
   async upsertProvider(provider) { const value={...provider,updatedAt:new Date().toISOString()}; this.providers.set(provider.id,value); return value; }
   async listProviders() { return [...this.providers.values()].sort((a,b)=>a.id.localeCompare(b.id)); }
+  async createAvatarProfile(profile){this.avatarProfiles.set(profile.id,structuredClone(profile));return structuredClone(profile);}
+  async listAvatarProfiles(){return [...this.avatarProfiles.values()].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).map(item=>structuredClone(item));}
+  async getAvatarProfile(id){const item=this.avatarProfiles.get(id);return item?structuredClone(item):null;}
+  async createAvatarSession(session){this.avatarSessions.set(session.id,structuredClone(session));return structuredClone(session);}
+  async listAvatarSessions(avatarId=null){return [...this.avatarSessions.values()].filter(item=>!avatarId||item.avatarId===avatarId).map(item=>structuredClone(item));}
+  async updateAvatarSession(id,changes){const item=this.avatarSessions.get(id);if(!item)return null;Object.assign(item,structuredClone(changes));return structuredClone(item);}
   async createTask(task, approvalReason) { this.tasks.set(task.id,{...structuredClone(deepRedact(task)),attempts:0,createdAt:new Date().toISOString()}); let approval=null; if(approvalReason){approval={id:randomUUID(),taskId:task.id,status:'pending',reason:approvalReason,requestedAt:new Date().toISOString()};this.approvals.set(approval.id,approval);} await this.audit(task.id,'task.submitted',task.requestedBy,{status:task.status,provenance:task.provenance}); return {task:structuredClone(this.tasks.get(task.id)),approval}; }
   async getTask(id) { return this.tasks.get(id) || null; }
   async claimNextTask(workerId) { const task=[...this.tasks.values()].find(item=>item.status==='queued'); if(!task)return null; Object.assign(task,{status:'running',attempts:task.attempts+1,startedAt:new Date().toISOString()}); await this.audit(task.id,'task.leased','worker',{workerId}); return structuredClone(task); }

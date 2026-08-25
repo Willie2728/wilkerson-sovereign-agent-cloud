@@ -1,3 +1,5 @@
+import {AvatarService} from './avatar-service.js';
+
 const protocolVersion = '2025-06-18';
 
 const tools = [
@@ -12,7 +14,12 @@ const tools = [
   {name:'approvals_list',description:'List pending or decided approvals.',inputSchema:{type:'object',properties:{status:{type:'string',default:'pending'}}},annotations:{readOnlyHint:true}},
   {name:'approval_decide',description:'Approve or deny a paused consequential task.',inputSchema:{type:'object',required:['approval_id','decision'],properties:{approval_id:{type:'string'},decision:{type:'string',enum:['approved','denied']},note:{type:'string'}}},annotations:{readOnlyHint:false}},
   {name:'audit_list',description:'Read audit records, optionally for one task.',inputSchema:{type:'object',properties:{task_id:{type:'string'}}},annotations:{readOnlyHint:true}},
-  {name:'artifacts_list',description:'List artifact metadata, optionally for one task.',inputSchema:{type:'object',properties:{task_id:{type:'string'}}},annotations:{readOnlyHint:true}}
+  {name:'artifacts_list',description:'List artifact metadata, optionally for one task.',inputSchema:{type:'object',properties:{task_id:{type:'string'}}},annotations:{readOnlyHint:true}},
+  {name:'avatar_profiles_list',description:'List durable Wilkerson avatar identities available to authorized agents.',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true}},
+  {name:'avatar_profile_create',description:'Create a reusable avatar identity. A lawful likeness basis is mandatory.',inputSchema:{type:'object',required:['name','likeness_consent'],properties:{name:{type:'string'},provider:{type:'string',enum:['tavus','wilkerson-local','unreal','other']},provider_persona_id:{type:'string'},provider_replica_id:{type:'string'},voice_profile:{type:'string'},system_prompt:{type:'string'},knowledge_tags:{type:'array',items:{type:'string'}},likeness_consent:{type:'string',enum:['self','authorized','synthetic']},consent_reference:{type:'string'}}},annotations:{readOnlyHint:false}},
+  {name:'avatar_sessions_list',description:'List avatar conversation-session records, optionally filtered by avatar.',inputSchema:{type:'object',properties:{avatar_id:{type:'string'}}},annotations:{readOnlyHint:true}},
+  {name:'avatar_session_create',description:'Prepare or record a provider-backed avatar session for a reusable avatar.',inputSchema:{type:'object',required:['avatar_id'],properties:{avatar_id:{type:'string'},provider_session_id:{type:'string'},conversation_url:{type:'string'},status:{type:'string',enum:['prepared','active']},context:{type:'string'}}},annotations:{readOnlyHint:false}},
+  {name:'avatar_session_end',description:'Mark an avatar session ended in the Wilkerson catalog. End the external provider conversation through an approval-gated provider task.',inputSchema:{type:'object',required:['session_id'],properties:{session_id:{type:'string'}}},annotations:{readOnlyHint:false}}
 ];
 
 function content(data) {
@@ -20,6 +27,7 @@ function content(data) {
 }
 
 async function callTool(layer, name, args = {}, authorityContext) {
+  const avatarService = new AvatarService(layer.store);
   switch (name) {
     case 'health_get': return layer.health();
     case 'capabilities_get': return layer.capabilities();
@@ -33,6 +41,20 @@ async function callTool(layer, name, args = {}, authorityContext) {
     case 'approval_decide': return layer.decideApproval(args.approval_id,args.decision,authorityContext,args.note || '');
     case 'audit_list': return layer.audit(args.task_id);
     case 'artifacts_list': return layer.artifacts(args.task_id);
+    case 'avatar_profiles_list': layer.requireScope(authorityContext,['avatar:read']); return avatarService.listProfiles();
+    case 'avatar_profile_create': {
+      const authority=layer.requireScope(authorityContext,['avatar:write']);
+      return avatarService.createProfile({name:args.name,provider:args.provider,providerPersonaId:args.provider_persona_id,providerReplicaId:args.provider_replica_id,voiceProfile:args.voice_profile,systemPrompt:args.system_prompt,knowledgeTags:args.knowledge_tags,likenessConsent:args.likeness_consent,consentReference:args.consent_reference},authority.principal);
+    }
+    case 'avatar_sessions_list': layer.requireScope(authorityContext,['avatar:read']); return avatarService.listSessions(args.avatar_id);
+    case 'avatar_session_create': {
+      const authority=layer.requireScope(authorityContext,['avatar:write']);
+      return avatarService.createSession({avatarId:args.avatar_id,providerSessionId:args.provider_session_id,conversationUrl:args.conversation_url,status:args.status,context:args.context},authority.principal);
+    }
+    case 'avatar_session_end': {
+      const authority=layer.requireScope(authorityContext,['avatar:write']);
+      return avatarService.endSession(args.session_id,authority.principal);
+    }
     default: throw Object.assign(new Error(`Unknown MCP tool: ${name}`),{code:-32601});
   }
 }

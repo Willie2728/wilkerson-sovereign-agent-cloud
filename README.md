@@ -60,10 +60,11 @@ Authentication uses `Authorization: Bearer <GATEWAY_API_TOKEN>`. Credentials rem
 - `POST /api/tasks`, `GET /api/tasks/:id`, `POST /api/tasks/:id/cancel`, and `GET /api/tasks/:id/result`.
 - `GET /api/approvals` and `POST /api/approvals/:id/decision`.
 - `GET /api/audit`, `GET /api/artifacts`, and `GET /api/artifacts/:id`.
+- `GET/POST /api/avatars`, `GET /api/avatars/:id`, and `GET/POST /api/avatar-sessions` provide a durable avatar identity and conversation-session catalog. Writes require `avatar:write`; reads require `avatar:read` (the founder gateway wildcard remains supported).
 
 ### MCP
 
-`POST /mcp` implements authenticated stateless Streamable HTTP JSON-RPC for `initialize`, `ping`, `tools/list`, and `tools/call`. The published tools are health, capabilities, providers, provider probe, task submit/status/result/cancel, approvals list/decision, audit list, and artifacts list.
+`POST /mcp` implements authenticated stateless Streamable HTTP JSON-RPC for `initialize`, `ping`, `tools/list`, and `tools/call`. The published tools include health, capabilities, providers, task lifecycle, approvals, audit, artifacts, durable avatar profiles, and avatar session lifecycle.
 
 Routine reversible operations can enter the queue immediately. Consequential terms and unknown external-provider writes produce a pending approval and remain outside the queue until approved. Adapters without their required credentials and identifiers report `configuration_required`; configured adapters remain `configured_unverified` until a real probe succeeds.
 
